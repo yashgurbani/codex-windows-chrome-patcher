@@ -1,0 +1,15 @@
+{
+  "name": "codex-windows-chrome-patcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unofficial Windows patcher for enabling Codex desktop Chrome plugin availability in a loose app copy.",
+  "type": "module",
+  "scripts": {
+    "patch:dry-run": "node ./scripts/patch-codex-chrome-windows.mjs --dry-run",
+    "patch:apply": "node ./scripts/patch-codex-chrome-windows.mjs --apply --patch-exe-integrity"
+  },
+  "dependencies": {
+    "@electron/asar": "^3.2.18"
+  }
+}
+

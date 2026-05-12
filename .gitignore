@@ -1,0 +1,7 @@
+node_modules/
+*.asar
+*.bak-*
+*.log
+.DS_Store
+CodexChromePatched/
+
