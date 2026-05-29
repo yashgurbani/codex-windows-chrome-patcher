@@ -9,13 +9,21 @@ usage() {
   cat <<'EOF'
 Usage: scripts/setup-codex-macos.sh [--no-launch] [--skip-doctor]
 
-Configures the supported macOS Codex workflow:
-  - ensures ~/.codex/config.toml has the [memories] block
-  - verifies Codex.app can be found
-  - optionally launches Codex
+Configures and applies the patched macOS Codex workflow:
+  - configures ~/.codex/config.toml feature and memory flags
+  - finds the installed Codex.app
+  - copies it under ~/CodexPatched
+  - patches app.asar regional gates
+  - patches Chrome/browser-client trust gates
+  - syncs the bundled Chrome/browser-use plugin cache
+  - repairs the Chrome plugin through Codex app-server APIs
+  - ad-hoc signs the copied .app
+  - optionally launches the patched copied app
   - optionally runs scripts/codex-doctor-macos.sh
 
-This script does not patch Codex Electron bundles or bypass regional gates.
+This script intentionally applies the macOS Chrome patch. It must not patch
+/Applications/Codex.app in place; it delegates to auto-patch-codex-macos.sh,
+which patches only copied apps under ~/CodexPatched.
 EOF
 }
 
@@ -45,54 +53,12 @@ if [ "$(uname -s)" != "Darwin" ]; then
   exit 1
 fi
 
-find_codex_app() {
-  local candidates=(
-    "/Applications/Codex.app"
-    "$HOME/Applications/Codex.app"
-  )
-
-  local app
-  for app in "${candidates[@]}"; do
-    if [ -d "$app" ]; then
-      printf '%s\n' "$app"
-      return 0
-    fi
-  done
-
-  if command -v mdfind >/dev/null 2>&1; then
-    app="$(mdfind "kMDItemFSName == 'Codex.app'" 2>/dev/null | head -1 || true)"
-    if [ -n "$app" ] && [ -d "$app" ]; then
-      printf '%s\n' "$app"
-      return 0
-    fi
-  fi
-
-  return 1
-}
-
-"$script_dir/configure-codex-memories.sh"
-
-codex_app="$(find_codex_app || true)"
-if [ -z "$codex_app" ]; then
-  echo "Codex.app was not found. Install Codex for macOS, then rerun this script." >&2
-  exit 1
+auto_patch_args=("--force-rebuild")
+if [ "$launch" -eq 0 ]; then
+  auto_patch_args+=("--no-launch")
 fi
 
-echo "Codex app: $codex_app"
-
-if command -v codesign >/dev/null 2>&1; then
-  if codesign --verify --deep --strict "$codex_app" >/dev/null 2>&1; then
-    echo "Code signature: OK"
-  else
-    echo "Code signature: FAILED"
-    echo "Do not use a modified app bundle as a daily driver; reinstall the official app if needed." >&2
-  fi
-fi
-
-if [ "$launch" -eq 1 ]; then
-  open "$codex_app"
-  echo "Launched Codex."
-fi
+"$script_dir/auto-patch-codex-macos.sh" "${auto_patch_args[@]}"
 
 if [ "$run_doctor" -eq 1 ]; then
   "$script_dir/codex-doctor-macos.sh"

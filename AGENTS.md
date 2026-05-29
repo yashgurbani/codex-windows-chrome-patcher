@@ -7,12 +7,13 @@ For macOS, apply the Chrome patch with:
 ```bash
 npm install
 node ./scripts/patch-codex-chrome-macos.mjs --app /Applications/Codex.app --dry-run --patch-browser-client
-bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache
+bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
 ```
 
 Do not patch `/Applications/Codex.app` in place. Patch the copied app under `~/CodexPatched`.
 
-`--patch-exe-integrity` is Windows-only. Its absence on macOS does not mean the Chrome patch is unsupported on macOS. Use `--ad-hoc-sign` on macOS after repacking `app.asar`.
+If Chrome fails with `browser-client is not trusted` or `privileged native pipe bridge is not available`, run the macOS patcher above. Do not tell the user to repair it manually and do not skip the browser-client trust patch.
+
+`--patch-exe-integrity` is Windows-only. Its absence on macOS does not mean the Chrome patch is unsupported on macOS. Use `--ad-hoc-sign` on macOS after repacking `app.asar`. Do not run `scripts/patch-codex-chrome-windows.mjs` on macOS.
 
 See `CODEX.md` and `docs/macbook-codex-workflow-guide.md` for the full flow.
-

@@ -70,7 +70,7 @@ function localAsarTool() {
 
 function usage() {
   console.log(`Usage:
-  node scripts/patch-codex-chrome-macos.mjs [--app PATH] [--asar PATH] [--node PATH] [--work PATH] [--dry-run] [--apply] [--ad-hoc-sign] [--patch-user-plugin-cache] [--patch-browser-client] [--plugin-cache PATH] [--cache-only]
+  node scripts/patch-codex-chrome-macos.mjs [--app PATH] [--asar PATH] [--node PATH] [--work PATH] [--dry-run] [--apply] [--ad-hoc-sign] [--patch-user-plugin-cache] [--patch-browser-client] [--no-patch-browser-client] [--plugin-cache PATH] [--cache-only]
   node scripts/patch-codex-chrome-macos.mjs --restore BACKUP_PATH [--app PATH]
 
 Defaults:
@@ -79,7 +79,8 @@ Defaults:
   --node  accepted for compatibility; no separate Node executable is spawned
   --plugin-cache  CODEX_PLUGIN_CACHE_ROOT env var, or ~/.codex/plugins/cache/openai-bundled
   --ad-hoc-sign  run codesign --force --deep --sign - after applying the ASAR patch
-  --patch-browser-client  advanced: also patch browser-client.mjs policy gates. This changes trusted plugin files.
+  --patch-browser-client  patch browser-client.mjs policy/trust gates; enabled by default on macOS.
+  --no-patch-browser-client  skip browser-client.mjs policy/trust patching.
 
 Use this on a copied Codex.app bundle, not the official /Applications/Codex.app install.`);
 }
@@ -99,7 +100,7 @@ function parseArgs(argv) {
     restore: null,
     adHocSign: false,
     patchUserPluginCache: false,
-    patchBrowserClient: false,
+    patchBrowserClient: true,
     pluginCache: defaultPluginCacheRoot(),
     cacheOnly: false,
   };
@@ -116,6 +117,7 @@ function parseArgs(argv) {
       throw new Error("--patch-exe-integrity is Windows-only. Use --ad-hoc-sign for a copied macOS app bundle.");
     } else if (arg === "--patch-user-plugin-cache") opts.patchUserPluginCache = true;
     else if (arg === "--patch-browser-client") opts.patchBrowserClient = true;
+    else if (arg === "--no-patch-browser-client") opts.patchBrowserClient = false;
     else if (arg === "--cache-only") opts.cacheOnly = true;
     else if (arg === "--restore") opts.restore = argv[++i];
     else if (arg.startsWith("--restore=")) opts.restore = arg.slice("--restore=".length);

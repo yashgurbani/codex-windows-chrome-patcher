@@ -6,10 +6,10 @@ output_root="$HOME/CodexPatched"
 target_app=""
 force_rebuild=0
 launch=1
-sync_plugin_cache=0
-repair_chrome_plugin=0
-patch_browser_client=0
-ad_hoc_sign=0
+sync_plugin_cache=1
+repair_chrome_plugin=1
+patch_browser_client=1
+ad_hoc_sign=1
 configure_memories=1
 
 usage() {
@@ -25,10 +25,16 @@ Options:
   --target-app PATH        Exact copied .app bundle to use.
   --force-rebuild          Delete and recreate the target app copy.
   --no-launch              Patch only.
-  --sync-plugin-cache      Sync bundled browser plugins into ~/.codex cache.
-  --repair-chrome-plugin   Ask the copied app-server to reinstall Chrome plugin.
-  --patch-browser-client   Advanced: patch browser-client policy gates too.
-  --ad-hoc-sign            Run codesign --force --deep --sign - after patching.
+  --sync-plugin-cache      Sync bundled browser plugins into ~/.codex cache. Default: on.
+  --no-sync-plugin-cache   Do not sync bundled browser plugins into ~/.codex cache.
+  --repair-chrome-plugin   Ask the copied app-server to reinstall Chrome plugin. Default: on.
+  --no-repair-chrome-plugin
+                           Do not ask the copied app-server to reinstall Chrome plugin.
+  --patch-browser-client   Patch browser-client trust/policy gates. Default: on.
+  --no-patch-browser-client
+                           Skip browser-client trust/policy patching.
+  --ad-hoc-sign            Run codesign --force --deep --sign - after patching. Default: on.
+  --no-ad-hoc-sign         Skip ad-hoc signing.
   --no-memories            Skip ~/.codex/config.toml feature and memory configuration.
   -h, --help               Show this help.
 EOF
@@ -62,14 +68,26 @@ while [ "$#" -gt 0 ]; do
     --sync-plugin-cache)
       sync_plugin_cache=1
       ;;
+    --no-sync-plugin-cache)
+      sync_plugin_cache=0
+      ;;
     --repair-chrome-plugin)
       repair_chrome_plugin=1
+      ;;
+    --no-repair-chrome-plugin)
+      repair_chrome_plugin=0
       ;;
     --patch-browser-client)
       patch_browser_client=1
       ;;
+    --no-patch-browser-client)
+      patch_browser_client=0
+      ;;
     --ad-hoc-sign)
       ad_hoc_sign=1
+      ;;
+    --no-ad-hoc-sign)
+      ad_hoc_sign=0
       ;;
     --no-memories)
       configure_memories=0
@@ -163,7 +181,7 @@ fi
 
 output_root="$(expand_path "$output_root")"
 version="$(codex_version "$source_app")"
-patch_revision=3
+patch_revision=4
 if [ -z "$target_app" ]; then
   target_app="$output_root/CodexChromePatched-$version-r$patch_revision.app"
 else

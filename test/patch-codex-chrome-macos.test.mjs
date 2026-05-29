@@ -106,6 +106,25 @@ test("macOS shell entrypoints parse cleanly", (t) => {
   }
 });
 
+test("macOS workflow applies Chrome bridge trust patch by default", () => {
+  const autoPatch = readFileSync(join(root, "scripts", "auto-patch-codex-macos.sh"), "utf8");
+  const launcher = readFileSync(join(root, "scripts", "launch-patched-codex-macos.sh"), "utf8");
+  const setup = readFileSync(join(root, "scripts", "setup-codex-macos.sh"), "utf8");
+  const agentGuidance = readFileSync(join(root, "CODEX.md"), "utf8");
+
+  assert.match(autoPatch, /sync_plugin_cache=1/);
+  assert.match(autoPatch, /repair_chrome_plugin=1/);
+  assert.match(autoPatch, /patch_browser_client=1/);
+  assert.match(autoPatch, /patch_revision=4/);
+  assert.match(launcher, /patch_browser_client=1/);
+  assert.match(launcher, /--patch-user-plugin-cache/);
+  assert.match(launcher, /--patch-browser-client/);
+  assert.match(setup, /intentionally applies the macOS Chrome patch/);
+  assert.doesNotMatch(setup, /does not patch Codex Electron bundles|bypass regional gates/);
+  assert.match(agentGuidance, /browser-client is not trusted/);
+  assert.match(agentGuidance, /patch-codex-chrome-macos\.mjs/);
+});
+
 test("dry-run patches a macOS app bundle layout without touching app.asar", async (t) => {
   const fixtureRoot = join(root, ".test-fixtures", "codex-macos-app-asar");
   const appRoot = join(fixtureRoot, "Codex.app");

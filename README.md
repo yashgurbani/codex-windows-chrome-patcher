@@ -49,10 +49,24 @@ bash ./scripts/auto-patch-codex-macos.sh \
   --force-rebuild \
   --ad-hoc-sign \
   --patch-browser-client \
-  --sync-plugin-cache
+  --sync-plugin-cache \
+  --repair-chrome-plugin
 ```
 
 The macOS patcher refuses only the Windows-specific `--patch-exe-integrity` flag. That refusal does not mean the Chrome patch should be skipped on macOS. The macOS equivalent post-patch step is `--ad-hoc-sign`, which runs `codesign --force --deep --sign -` on the copied app after `app.asar` is replaced.
+
+The error `browser-client is not trusted` means the browser-client trust/cache patch did not run or a stale plugin cache is still being used. Fix it with the macOS patcher:
+
+```bash
+bash ./scripts/auto-patch-codex-macos.sh \
+  --force-rebuild \
+  --ad-hoc-sign \
+  --patch-browser-client \
+  --sync-plugin-cache \
+  --repair-chrome-plugin
+```
+
+Do not run the Windows patcher on macOS. Only `--patch-exe-integrity` is Windows-specific; the Chrome/browser regional-gate transforms are implemented separately in `scripts/patch-codex-chrome-macos.mjs`.
 
 ## What This Enables
 
@@ -366,7 +380,7 @@ The patch modifies:
 - The main bundle plugin availability predicates.
 - The renderer feature dispatch value.
 - The renderer/plugin filters that hide Chrome, browser-use, computer-use, and memories when regional gates are off.
-- Optionally, the bundled/user plugin browser-client files so Chrome backend trust and discovery checks do not re-hide the backend.
+- The bundled/user plugin browser-client files so Chrome backend trust and discovery checks do not re-hide the backend.
 - On Windows only, the copied `Codex.exe` embedded ASAR header hash, so Electron accepts the repacked ASAR in a loose copy.
 - On macOS only, the copied `.app` code signature via ad-hoc signing after `app.asar` is replaced.
 
@@ -408,14 +422,14 @@ Tasks:
 3. Run a dry-run against the official app bundle:
    node ./scripts/patch-codex-chrome-macos.mjs --app /Applications/Codex.app --dry-run --patch-browser-client
 4. If dry-run succeeds, run the automatic copied-app patcher:
-   bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache
+   bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
 5. Launch only the patched copy under ~/CodexPatched. Do not launch /Applications/Codex.app when testing.
 6. Verify the running Codex process path is under ~/CodexPatched:
    ps aux | grep -i '[C]odex'
 7. Restart Chrome, open the Codex Chrome Extension popup, and confirm it says Connected.
 8. In Codex, verify that browser-use metadata includes chrome and iab, @chrome is visible, and the Chrome backend can list open Chrome tabs.
 
-If regional restrictions still appear:
+If regional restrictions still appear, or Chrome fails with `browser-client is not trusted`:
 1. Force rebuild:
    bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
 2. Confirm the process path is not /Applications/Codex.app.

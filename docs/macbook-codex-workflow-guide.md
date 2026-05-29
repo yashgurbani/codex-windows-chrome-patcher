@@ -13,8 +13,9 @@ The current macOS patcher applies the same regional-gate transforms as the Windo
 - Forces the renderer plugin list to keep Chrome/browser-use visible.
 - Forces supported experimental feature flags such as apps, plugins, memories, remote control, tool search, and related gates.
 - Forces Memories UI availability and config support.
-- Optionally patches bundled and user-cache browser clients with `--patch-browser-client`.
-- Optionally syncs bundled browser plugins into `~/.codex/plugins/cache/openai-bundled`.
+- Patches bundled and user-cache browser clients with `--patch-browser-client` by default.
+- Syncs bundled browser plugins into `~/.codex/plugins/cache/openai-bundled` by default.
+- Repairs the Chrome plugin/native messaging setup through Codex app-server APIs by default.
 
 The patch cannot override server-side account, workspace, or plan checks. If the backend refuses a feature after the UI is unlocked, the local patch cannot fully solve that.
 
@@ -90,13 +91,14 @@ Then run the automatic copied-app patcher:
 bash ./scripts/auto-patch-codex-macos.sh \
   --ad-hoc-sign \
   --patch-browser-client \
-  --sync-plugin-cache
+  --sync-plugin-cache \
+  --repair-chrome-plugin
 ```
 
 This creates a versioned copied app like:
 
 ```text
-~/CodexPatched/CodexChromePatched-<version>-r3.app
+~/CodexPatched/CodexChromePatched-<version>-r4.app
 ```
 
 It also writes a marker file under `~/CodexPatched` so future runs skip unnecessary work for the same installed Codex version.
@@ -110,7 +112,8 @@ cd /path/to/codex-windows-chrome-patcher
 bash ./scripts/auto-patch-codex-macos.sh \
   --ad-hoc-sign \
   --patch-browser-client \
-  --sync-plugin-cache
+  --sync-plugin-cache \
+  --repair-chrome-plugin
 ```
 
 If Codex updated but the patched copy still complains about regional restrictions, force a rebuild:
@@ -120,7 +123,8 @@ bash ./scripts/auto-patch-codex-macos.sh \
   --force-rebuild \
   --ad-hoc-sign \
   --patch-browser-client \
-  --sync-plugin-cache
+  --sync-plugin-cache \
+  --repair-chrome-plugin
 ```
 
 Do not pin the versioned patched `.app` itself as your long-term launcher. The path changes when Codex updates. Use the launcher below.
@@ -143,7 +147,7 @@ That launcher:
 
 - changes into this repo;
 - runs `npm install` if dependencies are missing;
-- runs `auto-patch-codex-macos.sh --ad-hoc-sign --patch-browser-client --sync-plugin-cache`;
+- runs `auto-patch-codex-macos.sh`, whose macOS defaults ad-hoc sign, patch browser-client trust, sync plugin cache, and repair the Chrome plugin;
 - launches the patched Codex copy.
 
 Use this launcher after every Codex update. Do not open `/Applications/Codex.app` when testing the patch.
@@ -165,7 +169,8 @@ bash ./scripts/auto-patch-codex-macos.sh \
   --force-rebuild \
   --ad-hoc-sign \
   --patch-browser-client \
-  --sync-plugin-cache
+  --sync-plugin-cache \
+  --repair-chrome-plugin
 ```
 
 Check signature state:
@@ -191,7 +196,7 @@ osascript -e 'quit app "Codex"' || true
 Launch patched Codex through the launcher or:
 
 ```bash
-bash ./scripts/auto-patch-codex-macos.sh --ad-hoc-sign --patch-browser-client --sync-plugin-cache
+bash ./scripts/auto-patch-codex-macos.sh --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
 ```
 
 Check process paths:
@@ -378,7 +383,7 @@ Patch dry-run against a copied app:
 
 ```bash
 node ./scripts/patch-codex-chrome-macos.mjs \
-  --app "$HOME/CodexPatched/CodexChromePatched-<version>-r3.app" \
+  --app "$HOME/CodexPatched/CodexChromePatched-<version>-r4.app" \
   --dry-run \
   --patch-browser-client
 ```
@@ -399,7 +404,7 @@ Run:
 
 ```bash
 ps aux | grep -i '[C]odex'
-bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache
+bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
 ```
 
 If the rebuild fails with `Patch markers missing`, collect:
@@ -410,7 +415,15 @@ bash ./scripts/inspect-codex-macos.sh ./codex-macos-report.txt
 
 Then update `scripts/patch-codex-chrome-macos.mjs` with the new minified markers.
 
-### Chrome Plugin Missing
+### Chrome Plugin Missing Or Browser Client Not Trusted
+
+If Chrome fails with:
+
+```text
+privileged native pipe bridge is not available; browser-client is not trusted
+```
+
+the stale or copied browser-client cache was not patched. Run the macOS patcher; do not run the Windows patcher on macOS and do not repair the native host manually.
 
 Run:
 
@@ -426,7 +439,7 @@ Run:
 
 ```bash
 bash ./scripts/configure-codex-memories.sh
-bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache
+bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
 ```
 
 Then restart patched Codex and run the canary test.
@@ -437,14 +450,14 @@ Run:
 
 ```bash
 xattr -dr com.apple.quarantine "$HOME/CodexPatched"
-bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache
+bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
 ```
 
 If it still fails, delete the patched copies and rebuild:
 
 ```bash
 rm -rf "$HOME/CodexPatched"
-bash ./scripts/auto-patch-codex-macos.sh --ad-hoc-sign --patch-browser-client --sync-plugin-cache
+bash ./scripts/auto-patch-codex-macos.sh --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
 ```
 
 ### Official Codex Auto-Updates

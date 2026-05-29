@@ -3,7 +3,8 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 app_root="$HOME/CodexPatched/CodexChromePatched.app"
-sync_plugin_cache=0
+sync_plugin_cache=1
+patch_browser_client=1
 repair_chrome_plugin=0
 
 usage() {
@@ -13,7 +14,11 @@ Usage: scripts/launch-patched-codex-macos.sh [options]
 Options:
   --app PATH              Patched Codex.app copy to launch.
                           Default: ~/CodexPatched/CodexChromePatched.app
-  --sync-plugin-cache     Sync bundled browser plugins into ~/.codex cache.
+  --sync-plugin-cache     Sync bundled browser plugins into ~/.codex cache. Default: on.
+  --no-sync-plugin-cache  Do not sync bundled browser plugins into ~/.codex cache.
+  --patch-browser-client  Patch browser-client trust/policy gates during plugin cache sync. Default: on.
+  --no-patch-browser-client
+                          Skip browser-client trust/policy patching during plugin cache sync.
   --repair-chrome-plugin  Ask the copied app-server to reinstall Chrome plugin.
   -h, --help              Show this help.
 EOF
@@ -36,6 +41,15 @@ while [ "$#" -gt 0 ]; do
       ;;
     --sync-plugin-cache)
       sync_plugin_cache=1
+      ;;
+    --no-sync-plugin-cache)
+      sync_plugin_cache=0
+      ;;
+    --patch-browser-client)
+      patch_browser_client=1
+      ;;
+    --no-patch-browser-client)
+      patch_browser_client=0
       ;;
     --repair-chrome-plugin)
       repair_chrome_plugin=1
@@ -72,7 +86,13 @@ node_bin="$(command -v node || true)"
 patcher="$script_dir/patch-codex-chrome-macos.mjs"
 if [ "$sync_plugin_cache" -eq 1 ]; then
   if [ -n "$node_bin" ] && [ -f "$patcher" ]; then
-    "$node_bin" "$patcher" --app "$app_root" --cache-only --apply --patch-user-plugin-cache
+    patch_args=("$patcher" "--app" "$app_root" "--cache-only" "--apply" "--patch-user-plugin-cache")
+    if [ "$patch_browser_client" -eq 1 ]; then
+      patch_args+=("--patch-browser-client")
+    else
+      patch_args+=("--no-patch-browser-client")
+    fi
+    "$node_bin" "${patch_args[@]}"
   else
     echo "Skipping browser plugin cache patch because node or patch-codex-chrome-macos.mjs was not found." >&2
   fi
