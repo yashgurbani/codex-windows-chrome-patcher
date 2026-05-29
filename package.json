@@ -5,8 +5,13 @@
   "description": "Unofficial Windows patcher for enabling Codex desktop Chrome plugin availability in a loose app copy.",
   "type": "module",
   "scripts": {
+    "test": "node --test",
     "patch:dry-run": "node ./scripts/patch-codex-chrome-windows.mjs --dry-run",
-    "patch:apply": "node ./scripts/patch-codex-chrome-windows.mjs --apply --patch-exe-integrity"
+    "patch:apply": "node ./scripts/patch-codex-chrome-windows.mjs --apply --patch-exe-integrity",
+    "patch:auto": "powershell -ExecutionPolicy Bypass -File ./scripts/auto-patch-codex.ps1",
+    "patch:dry-run:macos": "node ./scripts/patch-codex-chrome-macos.mjs --dry-run",
+    "patch:apply:macos": "node ./scripts/patch-codex-chrome-macos.mjs --apply --ad-hoc-sign",
+    "patch:auto:macos": "bash ./scripts/auto-patch-codex-macos.sh"
   },
   "dependencies": {
     "@electron/asar": "^3.2.18"

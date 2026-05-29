@@ -1,7 +1,11 @@
 node_modules/
+.npm-cache/
+.work/
+.test-fixtures/
 *.asar
 *.bak-*
 *.log
 .DS_Store
 CodexChromePatched/
+bin/
 

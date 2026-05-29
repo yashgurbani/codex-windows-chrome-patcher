@@ -20,6 +20,33 @@ This repo documents the exact approach we used:
 - This patch targets the current minified bundle markers. A Codex update may change those markers and require a script update.
 - The patched app copy lives outside the Microsoft Store install and may need to be recreated after Codex updates.
 
+## macOS Translated Testing Copy
+
+The macOS copy keeps the same workflow shape, but uses `.app` bundle paths:
+
+- `scripts/patch-codex-chrome-macos.mjs`: patches a copied `Codex.app/Contents/Resources/app.asar`.
+- `scripts/auto-patch-codex-macos.sh`: finds the installed `Codex.app`, copies it under `~/CodexPatched`, patches the copy, and can launch it.
+- `scripts/launch-patched-codex-macos.sh`: launches a patched `.app` copy and can sync the plugin cache.
+- `scripts/reinstall-chrome-plugin-macos.mjs`: macOS path translation of the plugin reinstall helper.
+- `test/patch-codex-chrome-macos.test.mjs`: fixture tests for the macOS bundle layout and shell wrappers.
+
+Quick macOS dry-run against an explicit copied app:
+
+```bash
+npm install
+node ./scripts/patch-codex-chrome-macos.mjs \
+  --app "$HOME/CodexPatched/CodexChromePatched.app" \
+  --dry-run
+```
+
+Automatic copy, patch, ad-hoc sign, and launch:
+
+```bash
+bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign
+```
+
+The macOS patcher refuses the Windows-only `--patch-exe-integrity` flag. The closest translated step is `--ad-hoc-sign`, which runs `codesign --force --deep --sign -` on the copied app after `app.asar` is replaced.
+
 ## What This Enables
 
 After the patch works, Codex should advertise both browser backends:
@@ -50,7 +77,93 @@ From PowerShell:
 
 ```powershell
 cd .\codex-windows-chrome-patcher
-pnpm install
+npm install
+
+powershell -ExecutionPolicy Bypass -File .\scripts\auto-patch-codex.ps1
+```
+
+The automatic patcher finds the newest Store-installed Codex package, copies it to a versioned writable folder under `C:\tmp`, patches that copy, and launches it.
+On normal runs it reuses the already-patched versioned folder and skips the copy/repatch step. It only rebuilds when the target is missing, the patch marker is missing, or you pass `-ForceRebuild`.
+
+To force a fresh copy after Codex updates:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\auto-patch-codex.ps1 -ForceRebuild
+```
+
+The automatic patcher also creates or updates a stable Start Menu shortcut named `Codex Patched` on each successful run. Pin that shortcut once. It points back to `auto-patch-codex.ps1`, not to a versioned patched app folder, so it survives Codex updates and cleanup.
+
+To create shortcuts manually:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\create-patched-codex-shortcut.ps1
+```
+
+Create both Start Menu and Desktop shortcuts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\create-patched-codex-shortcut.ps1 -ShortcutLocations Both
+```
+
+The shortcut is usually the easiest daily path. It runs the patcher first, so if Codex updated, the loose patched copy can be rebuilt before launch.
+The shortcut runs PowerShell hidden, so it should not leave a terminal window sitting in the taskbar.
+
+### PowerToys Copilot Key Remap
+
+The Copilot key commonly appears to PowerToys as `Win (Left) + Shift (Left) + F23`. In Keyboard Manager, use `Open app`.
+
+Do not put the `.ps1` file in **Program path**. Put PowerShell there, and put the script in **Arguments**:
+
+```text
+Program path:
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+
+Arguments:
+-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Users\yashg\Documents\Codex\2026-05-13\help-me-implement-https-github-com\scripts\auto-patch-codex.ps1" -OutputRoot "C:\tmp"
+
+Start in directory:
+C:\Users\yashg\Documents\Codex\2026-05-13\help-me-implement-https-github-com\scripts
+
+Run as:
+Normal
+
+If already running:
+Start another
+
+Window visibility:
+Hidden
+```
+
+To print the exact values for this checkout:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\show-powertoys-copilot-remap.ps1
+```
+
+If PowerToys does not launch PowerShell reliably, build the no-console launcher exe and point PowerToys at that instead:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-copilot-launcher-exe.ps1
+```
+
+Then use:
+
+```text
+Program path:
+C:\Users\yashg\Documents\Codex\2026-05-13\help-me-implement-https-github-com\bin\CodexPatchedLauncher.exe
+
+Arguments:
+<leave blank>
+
+Window visibility:
+Hidden
+```
+
+Manual flow:
+
+```powershell
+cd .\codex-windows-chrome-patcher
+npm install
 
 $source = (Get-ChildItem "C:\Program Files\WindowsApps" -Directory -Filter "OpenAI.Codex_*" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 $target = "C:\tmp\CodexChromePatched"
@@ -83,15 +196,121 @@ Your loose patched copy, such as `C:\tmp\CodexChromePatched`, is not automatical
 Recommended update flow:
 
 1. Close Codex and Chrome.
-2. Find the newest `OpenAI.Codex_*` folder under `WindowsApps`.
-3. Copy that folder to a new loose path, for example `C:\tmp\CodexChromePatched-<version>`.
-4. Run the patcher in `--dry-run` mode first.
-5. If all markers are found, run with `--apply --patch-exe-integrity`.
-6. Launch the new patched copy.
-7. Open Chrome and confirm the extension says `Connected`.
-8. Verify Codex can see the Chrome backend before deleting the previous patched copy.
+2. Run `powershell -ExecutionPolicy Bypass -File .\scripts\auto-patch-codex.ps1 -ForceRebuild`.
+3. Open Chrome and confirm the extension says `Connected`.
+4. Verify Codex can see the Chrome backend before deleting any previous patched copy.
 
 Keep one older working patched copy until the new one is verified.
+
+### Automatic Patcher Options
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\auto-patch-codex.ps1 `
+  -OutputRoot "C:\tmp" `
+  -ForceRebuild
+```
+
+- `-OutputRoot`: where versioned patched app copies are stored.
+- `-TargetRoot`: exact patched app directory to use instead of the versioned default.
+- `-ForceRebuild`: delete and recreate the target from the newest Store package.
+- `-NoLaunch`: patch only.
+- `-NoShortcut`: do not create or update the dynamic Start Menu shortcut.
+- `-NoPaseo`: do not update Paseo's Codex provider override.
+- `-NoRemoteControl`: launch Codex without starting the localhost remote-control app-server.
+- `-RemoteControlPort`: localhost port for the remote-control app-server; default is `14567`.
+- `-ShortcutName`: name for the generated `.lnk`; default is `Codex Patched`.
+- `-ShortcutLocations`: `StartMenu`, `Desktop`, `Both`, `None`, or comma-separated values; default is `StartMenu`.
+- `-RepairChromePlugin`: ask Codex to reinstall the bundled Chrome plugin during launch.
+- `-SyncPluginCache`: advanced cache sync. Only use this after closing Codex and Chrome, because Windows can lock plugin files.
+- `-PatchBrowserClient`: advanced browser-client patch. Avoid this unless you are intentionally changing trusted plugin files.
+
+### Memories
+
+The patcher also forces the desktop renderer to expose Codex Memories in Personalization and to treat the supported desktop experimental features as enabled even when the regional feature list hides them.
+
+The matching `config.toml` settings are:
+
+```toml
+web_search = "live"
+
+[features]
+apps = true
+memories = true
+plugins = true
+browser_use = true
+browser_use_external = true
+computer_use = true
+in_app_browser = true
+remote_control = true
+tool_search = true
+tool_suggest = true
+tool_call_mcp_elicitation = true
+multi_agent = true
+goals = true
+remote_connections = true
+workspace_dependencies = false
+js_repl = false
+
+[memories]
+generate_memories = true
+use_memories = true
+disable_on_external_context = false
+```
+
+To add or refresh that block in your user config with a timestamped backup:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\configure-codex-memories.ps1
+```
+
+### Windows Remote Control
+
+Windows builds can fail with the normal `codex remote-control start` daemon path. The included workaround starts a localhost app-server and sends the internal remote-control enable RPC.
+
+Normal `Codex Patched` launches start this remote-control app-server automatically after the desktop app is launched. Use `-NoRemoteControl` only when debugging startup.
+
+Create or refresh the Start Menu shortcut:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-codex-remote-control.ps1 -CreateShortcut
+```
+
+Start remote control:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-codex-remote-control.ps1
+```
+
+Check status or stop it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-codex-remote-control.ps1 -Status
+powershell -ExecutionPolicy Bypass -File .\scripts\start-codex-remote-control.ps1 -Stop
+```
+
+The helper uses the newest patched Codex copy under `D:\CodexPatched` by default, listens only on `ws://127.0.0.1:14567`, and writes logs under `%USERPROFILE%\.codex\remote-control`.
+
+### Paseo
+
+The automatic patcher also configures Paseo's built-in Codex provider to use the newest patched `codex.exe` directly. Using the direct executable avoids a Windows `cmd.exe` wrapper between Paseo and Codex, which makes stdio and process cleanup more reliable.
+
+It also patches Paseo's Codex import path so the import dialog lists sessions from cheap `thread/list` metadata instead of hydrating every full Codex timeline during discovery. The actual imported session still hydrates history after you choose it.
+
+Refresh the provider override manually:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\configure-paseo-codex-provider.ps1
+```
+
+Paseo reads this provider config when its daemon starts. If its diagnostic still shows `C:\Users\...\AppData\Roaming\npm\codex.CMD`, restart the Paseo daemon after saving any running Paseo agents.
+
+If the import dialog times out or says no Codex sessions are found, run:
+
+```powershell
+node .\scripts\patch-paseo-codex-import.mjs
+```
+
+Then restart Paseo so its daemon loads the patched app code.
 
 ## Verify
 
@@ -197,3 +416,15 @@ Expected result:
 
 - `scripts/patch-codex-chrome-windows.mjs`: patches a Codex app copy.
 - `scripts/launch-patched-codex.ps1`: closes Store Codex processes and launches the patched copy.
+- `scripts/auto-patch-codex.ps1`: finds the newest installed Codex package, creates or refreshes a patched copy, updates the dynamic shortcut, and optionally launches it.
+- `scripts/create-patched-codex-shortcut.ps1`: creates Start Menu/Desktop shortcuts to the automatic patcher.
+- `scripts/show-powertoys-copilot-remap.ps1`: prints exact PowerToys Keyboard Manager fields for binding the Copilot key.
+- `scripts/build-copilot-launcher-exe.ps1`: builds a tiny no-console launcher exe for PowerToys bindings that do not run PowerShell commands reliably.
+- `scripts/configure-codex-memories.ps1`: adds or refreshes the `[features]` and `[memories]` blocks in `~/.codex/config.toml` with a backup when changes are needed.
+- `scripts/configure-paseo-codex-provider.ps1`: points Paseo's Codex provider at the patched Codex CLI.
+- `scripts/patch-paseo-codex-import.mjs`: patches Paseo's Codex import discovery to avoid full-history hydration during the import list step.
+- `scripts/codex-patched-cli.cmd`: stable command wrapper for tools like Paseo.
+- `scripts/resolve-patched-codex-cli.ps1`: resolves the newest patched Codex CLI.
+- `scripts/start-codex-remote-control.ps1`: starts, checks, stops, and shortcuts the Windows app-server remote-control workaround.
+- `scripts/codex-remote-control-enable.mjs`: sends the remote-control WebSocket RPC sequence to the localhost app-server.
+- `launcher/CodexPatchedLauncher.cs`: source for the no-console launcher exe.
