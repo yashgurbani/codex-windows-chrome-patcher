@@ -1,31 +1,33 @@
-# Codex Windows Chrome Patcher
+# Codex Chrome Patcher
 
-Unofficial Windows workaround for enabling the bundled Codex Chrome plugin in Europe or other regions where the Codex desktop app may hide Chrome support behind feature availability checks.
+Unofficial copied-app workaround for enabling the bundled Codex Chrome plugin in Europe or other regions where the Codex desktop app may hide Chrome/browser/computer-use support behind feature availability checks.
 
-Use this when you want Codex on Windows to connect to the official Codex Chrome Extension and control your existing Chrome browser session.
+Use this when you want Codex on Windows or macOS to connect to the official Codex Chrome Extension and control your existing Chrome browser session.
 
 This repo documents the exact approach we used:
 
-1. Copy the installed Codex app out of `WindowsApps` into a writable folder.
-2. Patch `app.asar` in that loose copy so `externalBrowserUse` is enabled.
-3. Patch the Electron ASAR integrity hash inside the copied `Codex.exe`.
-4. Launch the patched loose copy.
-5. Install or reconnect the official Codex Chrome Extension.
+1. Copy the installed Codex app into a writable copied-app location.
+2. Patch `app.asar` in that copy so Chrome, in-app browser, computer-use, plugin, memories, and related renderer gates are enabled.
+3. On Windows, patch the Electron ASAR integrity hash inside the copied `Codex.exe`.
+4. On macOS, ad-hoc sign the copied `.app` after replacing `app.asar`.
+5. Launch the patched copy.
+6. Install, reconnect, or repair the official Codex Chrome Extension / native messaging host.
 
 ## Important Notes
 
 - This is not an official OpenAI tool.
-- This is specifically for Windows Codex desktop and Chrome browser use.
-- Do not patch the installed `WindowsApps` package in place. Windows AppX packages are signed and protected.
+- This repo supports both Windows and macOS copied-app patching.
+- The macOS Chrome patch is intentional and supported by this repo. Apply it to a copied app under `~/CodexPatched`; do not patch `/Applications/Codex.app` in place.
+- Do not patch the installed Windows `WindowsApps` package in place. Windows AppX packages are signed and protected.
 - This patch targets the current minified bundle markers. A Codex update may change those markers and require a script update.
-- The patched app copy lives outside the Microsoft Store install and may need to be recreated after Codex updates.
+- The patched app copy lives outside the official install and may need to be recreated after Codex updates.
 
-## macOS Translated Testing Copy
+## macOS Copied-App Chrome Patch
 
-The macOS copy keeps the same workflow shape, but uses `.app` bundle paths:
+The macOS workflow is a first-class translated patch, not a no-op. It uses `.app` bundle paths:
 
 - `scripts/patch-codex-chrome-macos.mjs`: patches a copied `Codex.app/Contents/Resources/app.asar`.
-- `scripts/auto-patch-codex-macos.sh`: finds the installed `Codex.app`, copies it under `~/CodexPatched`, patches the copy, and can launch it.
+- `scripts/auto-patch-codex-macos.sh`: finds the installed `Codex.app`, copies it under `~/CodexPatched`, applies the Chrome/browser regional-gate patch, ad-hoc signs the copy, and launches it.
 - `scripts/launch-patched-codex-macos.sh`: launches a patched `.app` copy and can sync the plugin cache.
 - `scripts/reinstall-chrome-plugin-macos.mjs`: macOS path translation of the plugin reinstall helper.
 - `test/patch-codex-chrome-macos.test.mjs`: fixture tests for the macOS bundle layout and shell wrappers.
@@ -35,17 +37,22 @@ Quick macOS dry-run against an explicit copied app:
 ```bash
 npm install
 node ./scripts/patch-codex-chrome-macos.mjs \
-  --app "$HOME/CodexPatched/CodexChromePatched.app" \
-  --dry-run
+  --app /Applications/Codex.app \
+  --dry-run \
+  --patch-browser-client
 ```
 
 Automatic copy, patch, ad-hoc sign, and launch:
 
 ```bash
-bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign
+bash ./scripts/auto-patch-codex-macos.sh \
+  --force-rebuild \
+  --ad-hoc-sign \
+  --patch-browser-client \
+  --sync-plugin-cache
 ```
 
-The macOS patcher refuses the Windows-only `--patch-exe-integrity` flag. The closest translated step is `--ad-hoc-sign`, which runs `codesign --force --deep --sign -` on the copied app after `app.asar` is replaced.
+The macOS patcher refuses only the Windows-specific `--patch-exe-integrity` flag. That refusal does not mean the Chrome patch should be skipped on macOS. The macOS equivalent post-patch step is `--ad-hoc-sign`, which runs `codesign --force --deep --sign -` on the copied app after `app.asar` is replaced.
 
 ## What This Enables
 
@@ -57,13 +64,21 @@ After the patch works, Codex should advertise both browser backends:
 
 The Chrome extension popup should show `Connected`, and Codex should be able to see Chrome tabs through the Chrome plugin.
 
-## Requirements
+## Windows Requirements
 
 - Windows
 - Codex desktop app installed from Microsoft Store
 - Node.js available
 - `@electron/asar` installed for repacking `app.asar`
 - Codex Chrome Extension installed in Chrome
+
+## macOS Requirements
+
+- macOS with official `Codex.app` installed, usually at `/Applications/Codex.app`
+- Node.js and npm
+- Xcode command line tools for `codesign` / standard developer utilities
+- Codex Chrome Extension installed in Chrome
+- Accessibility and Screen Recording permissions for the patched copied app if using computer-use
 
 Install the ASAR tool inside this repo:
 
@@ -222,7 +237,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\auto-patch-codex.ps1 `
 - `-ShortcutLocations`: `StartMenu`, `Desktop`, `Both`, `None`, or comma-separated values; default is `StartMenu`.
 - `-RepairChromePlugin`: ask Codex to reinstall the bundled Chrome plugin during launch.
 - `-SyncPluginCache`: advanced cache sync. Only use this after closing Codex and Chrome, because Windows can lock plugin files.
-- `-PatchBrowserClient`: advanced browser-client patch. Avoid this unless you are intentionally changing trusted plugin files.
+- `-PatchBrowserClient`: patches bundled/user-cache browser client trust and backend checks. Use this for the full Chrome regional-gate bypass on macOS or when Chrome is still hidden after the app-asar patch. Skip it only when you intentionally want the minimal app-asar-only patch.
 
 ### Memories
 
@@ -350,7 +365,10 @@ The patch modifies:
 - The main Electron bundle feature defaults.
 - The main bundle plugin availability predicates.
 - The renderer feature dispatch value.
-- Optionally, the copied `Codex.exe` embedded ASAR header hash, so Electron accepts the repacked ASAR in a loose copy.
+- The renderer/plugin filters that hide Chrome, browser-use, computer-use, and memories when regional gates are off.
+- Optionally, the bundled/user plugin browser-client files so Chrome backend trust and discovery checks do not re-hide the backend.
+- On Windows only, the copied `Codex.exe` embedded ASAR header hash, so Electron accepts the repacked ASAR in a loose copy.
+- On macOS only, the copied `.app` code signature via ad-hoc signing after `app.asar` is replaced.
 
 ## Troubleshooting
 
@@ -366,9 +384,54 @@ Restart the patched Codex copy, restart Chrome, then open the extension popup. I
 
 If the extension popup says `Connected`, Chrome already found the native host. Some sandboxed checks may read a different HKCU view. Treat the popup plus a running `extension-host.exe` process as stronger evidence.
 
-## Prompt for a Windows Agent
+## Prompt for a Local Agent
 
-Paste this into a capable local coding agent when Codex updates or when the patch stops applying:
+Paste the matching prompt into a capable local coding agent when Codex updates or when the patch stops applying.
+
+### macOS Agent Prompt
+
+```text
+You are working on macOS. The goal is to enable Codex desktop Chrome browser use in Europe or another region-gated install by patching a copied Codex.app bundle. The macOS Chrome patch is supported by this repo and should be applied. Do not patch /Applications/Codex.app in place.
+
+Safety rules:
+- Do not modify /Applications/Codex.app directly.
+- Patch only a copied app under ~/CodexPatched.
+- Do not delete the previous working patched copy until the new patched copy is verified.
+- Do not inspect or export Chrome cookies, passwords, tokens, or local storage.
+- Prefer dry-run first, then apply only if all markers are found.
+
+Tasks:
+1. Locate the official Codex.app:
+   ls -ld /Applications/Codex.app || mdfind "kMDItemFSName == 'Codex.app'"
+2. Install repo dependencies if node_modules is missing:
+   npm install
+3. Run a dry-run against the official app bundle:
+   node ./scripts/patch-codex-chrome-macos.mjs --app /Applications/Codex.app --dry-run --patch-browser-client
+4. If dry-run succeeds, run the automatic copied-app patcher:
+   bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache
+5. Launch only the patched copy under ~/CodexPatched. Do not launch /Applications/Codex.app when testing.
+6. Verify the running Codex process path is under ~/CodexPatched:
+   ps aux | grep -i '[C]odex'
+7. Restart Chrome, open the Codex Chrome Extension popup, and confirm it says Connected.
+8. In Codex, verify that browser-use metadata includes chrome and iab, @chrome is visible, and the Chrome backend can list open Chrome tabs.
+
+If regional restrictions still appear:
+1. Force rebuild:
+   bash ./scripts/auto-patch-codex-macos.sh --force-rebuild --ad-hoc-sign --patch-browser-client --sync-plugin-cache --repair-chrome-plugin
+2. Confirm the process path is not /Applications/Codex.app.
+3. If the patcher fails because markers are missing, run:
+   bash ./scripts/inspect-codex-macos.sh ./codex-macos-report.txt
+4. Search the extracted bundle for externalBrowserUse, externalBrowserUseAllowed, inAppBrowserUse, computerUse, memories, plugin availability, and browser-client trust checks.
+5. Update scripts/patch-codex-chrome-macos.mjs with the new exact minified markers.
+6. Re-run dry-run, then apply only after all markers are found.
+
+Expected result:
+- Codex request metadata advertises ["chrome", "iab"].
+- agent.browsers.list() includes a browser named Chrome with type extension.
+- The official Codex Chrome Extension popup says Connected.
+```
+
+### Windows Agent Prompt
 
 ```text
 You are working on Windows. The goal is to enable Codex desktop Chrome browser use in Europe or another region-gated install by patching a loose copy of the Codex desktop app. The patch should expose the bundled Codex Chrome plugin so Codex can connect to the official Codex Chrome Extension. Do not modify the protected Microsoft Store package in place.
