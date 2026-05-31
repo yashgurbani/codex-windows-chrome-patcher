@@ -1,12 +1,14 @@
 param(
   [string]$ShortcutPath = "",
   [string]$ShortcutName = "Codex Patched",
+  [string]$CodexAliasName = "Codex",
   [string]$ShortcutLocations = "StartMenu",
   [string]$OutputRoot = "D:\CodexPatched",
   [string]$TargetRoot = "",
   [switch]$ForceRebuild,
   [switch]$RepairChromePlugin,
-  [switch]$NoRepairChromePlugin
+  [switch]$NoRepairChromePlugin,
+  [switch]$NoCodexAlias
 )
 
 $ErrorActionPreference = "Stop"
@@ -154,15 +156,27 @@ if (-not $NoRepairChromePlugin) {
 $icon = Get-CodexShortcutIcon -Target $TargetRoot -Root $OutputRoot
 
 $shell = New-Object -ComObject WScript.Shell
-$shortcutPaths = Get-ShortcutPaths -Path $ShortcutPath -Name $ShortcutName -Locations $ShortcutLocations
-foreach ($path in $shortcutPaths) {
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
-  $shortcut = $shell.CreateShortcut($path)
-  $shortcut.TargetPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
-  $shortcut.Arguments = ($arguments -join " ")
-  $shortcut.WorkingDirectory = (Split-Path -Parent $autoPatcher)
-  $shortcut.IconLocation = $icon
-  $shortcut.Description = "Patch and launch the newest Codex app copy with Chrome support enabled."
-  $shortcut.Save()
-  Write-Host "Created shortcut: $path"
+$shortcutNames = @($ShortcutName)
+if (
+  -not $NoCodexAlias -and
+  [string]::IsNullOrWhiteSpace($ShortcutPath) -and
+  -not [string]::IsNullOrWhiteSpace($CodexAliasName) -and
+  $CodexAliasName -ine $ShortcutName
+) {
+  $shortcutNames += $CodexAliasName
+}
+
+foreach ($name in $shortcutNames) {
+  $shortcutPaths = Get-ShortcutPaths -Path $ShortcutPath -Name $name -Locations $ShortcutLocations
+  foreach ($path in $shortcutPaths) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+    $shortcut = $shell.CreateShortcut($path)
+    $shortcut.TargetPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+    $shortcut.Arguments = ($arguments -join " ")
+    $shortcut.WorkingDirectory = (Split-Path -Parent $autoPatcher)
+    $shortcut.IconLocation = $icon
+    $shortcut.Description = "Patch and launch the newest Codex app copy with Chrome support enabled."
+    $shortcut.Save()
+    Write-Host "Created shortcut: $path"
+  }
 }

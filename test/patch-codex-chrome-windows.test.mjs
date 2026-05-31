@@ -130,6 +130,17 @@ test("Windows launcher uses native remote connections and full Chrome repair def
   assert.doesNotMatch(launcher, /RemoteControlPort|NoRemoteControl|start-codex-remote-control|codex-remote-control-enable/);
 });
 
+test("Windows launcher keeps Start shortcuts resilient across Codex updates", () => {
+  const autoPatch = readFileSync(join(root, "scripts", "auto-patch-codex.ps1"), "utf8");
+  const shortcut = readFileSync(join(root, "scripts", "create-patched-codex-shortcut.ps1"), "utf8");
+
+  assert.match(autoPatch, /Remove-StalePatchedCodexShortcuts/);
+  assert.match(autoPatch, /Set-DynamicPatchedCodexShortcut -Name "Codex"/);
+  assert.match(autoPatch, /\[switch\]\$NoCodexAlias/);
+  assert.match(shortcut, /\[string\]\$CodexAliasName = "Codex"/);
+  assert.match(shortcut, /foreach \(\$name in \$shortcutNames\)/);
+});
+
 test("local ASAR tool detection supports the installed package bin", (t) => {
   const appRoot = join(root, ".test-fixtures", "fake-codex");
   const resources = join(appRoot, "app", "resources");

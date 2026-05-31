@@ -9,6 +9,8 @@ param(
   [switch]$NoPaseo,
   [string]$ShortcutName = "Codex Patched",
   [string]$ShortcutLocations = "StartMenu",
+  [switch]$NoCodexAlias,
+  [switch]$NoShortcutCleanup,
   [switch]$SyncPluginCache,
   [switch]$RepairChromePlugin,
   [switch]$PatchBrowserClient,
@@ -255,6 +257,32 @@ function Get-ShortcutPaths {
   return $paths | Select-Object -Unique
 }
 
+function Remove-StalePatchedCodexShortcuts {
+  param(
+    [string]$Locations = "Both"
+  )
+
+  $staleNames = @(
+    "Codex Remote Control",
+    "Codex Patched Remote Control"
+  )
+
+  foreach ($staleName in $staleNames) {
+    foreach ($shortcutPath in (Get-ShortcutPaths -Name $staleName -Locations $Locations)) {
+      if (-not (Test-Path -LiteralPath $shortcutPath)) {
+        continue
+      }
+
+      try {
+        Remove-Item -LiteralPath $shortcutPath -Force -ErrorAction Stop
+        Write-Host "Removed stale shortcut: $shortcutPath"
+      } catch {
+        Write-Warning "Could not remove stale shortcut: $shortcutPath ($($_.Exception.Message))"
+      }
+    }
+  }
+}
+
 function Set-DynamicPatchedCodexShortcut {
   param(
     [string]$Name,
@@ -419,7 +447,13 @@ if (-not $NoShortcut) {
   if ($targetRootWasExplicit) {
     $shortcutTargetRoot = $TargetRoot
   }
+  if (-not $NoShortcutCleanup) {
+    Remove-StalePatchedCodexShortcuts -Locations "Both"
+  }
   Set-DynamicPatchedCodexShortcut -Name $ShortcutName -Locations $ShortcutLocations -AutoPatcher $PSCommandPath -OutputRoot $OutputRoot -TargetRoot $shortcutTargetRoot -IconRoot $TargetRoot
+  if (-not $NoCodexAlias -and $ShortcutName -ine "Codex") {
+    Set-DynamicPatchedCodexShortcut -Name "Codex" -Locations $ShortcutLocations -AutoPatcher $PSCommandPath -OutputRoot $OutputRoot -TargetRoot $shortcutTargetRoot -IconRoot $TargetRoot
+  }
 }
 
 if (-not $NoLaunch) {
