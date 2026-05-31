@@ -999,19 +999,34 @@ function patchBrowserClient(file, { write }) {
 
 function patchPluginResources(appRoot, { write, patchBrowserClientFiles }) {
   if (!patchBrowserClientFiles) return [];
-  const pluginRoot = join(appRoot, "app", "resources", "plugins", "openai-bundled", "plugins");
-  const files = [
-    join(pluginRoot, "chrome", "scripts", "browser-client.mjs"),
-    join(pluginRoot, "browser-use", "scripts", "browser-client.mjs"),
-  ];
+  const pluginRoot = getBundledPluginRoot(appRoot);
+  if (!existsSync(pluginRoot)) return [];
+  const files = readdirSync(pluginRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+    .map((entry) => join(pluginRoot, entry.name, "scripts", "browser-client.mjs"));
   return files.filter((file) => existsSync(file)).map((file) => patchBrowserClient(file, { write }));
 }
 
+function getBundledPluginRoot(appRoot) {
+  return join(appRoot, "app", "resources", "plugins", "openai-bundled", "plugins");
+}
+
+function listBundledPluginNames(appRoot) {
+  const bundledPluginRoot = getBundledPluginRoot(appRoot);
+  if (!existsSync(bundledPluginRoot)) return [];
+
+  return readdirSync(bundledPluginRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+    .map((entry) => entry.name)
+    .filter((pluginName) => existsSync(join(bundledPluginRoot, pluginName, ".codex-plugin", "plugin.json")))
+    .sort();
+}
+
 function syncBundledPluginCache(appRoot, cacheRoot, { write }) {
-  const bundledPluginRoot = join(appRoot, "app", "resources", "plugins", "openai-bundled", "plugins");
+  const bundledPluginRoot = getBundledPluginRoot(appRoot);
   const results = [];
 
-  for (const pluginName of ["chrome", "browser-use"]) {
+  for (const pluginName of listBundledPluginNames(appRoot)) {
     const source = join(bundledPluginRoot, pluginName);
     const manifest = join(source, ".codex-plugin", "plugin.json");
     const changes = [];
@@ -1038,7 +1053,8 @@ function syncBundledPluginCache(appRoot, cacheRoot, { write }) {
     if (write) {
       mkdirSync(pluginCacheRoot, { recursive: true });
       cpSync(source, target, { recursive: true, force: true });
-      if (!existsSync(latest)) symlinkSync(target, latest, "junction");
+      if (existsSync(latest)) rmSync(latest, { recursive: true, force: true });
+      symlinkSync(target, latest, "junction");
     }
 
     results.push({ file: target, changed: changes, missing });
@@ -1052,7 +1068,7 @@ function patchUserPluginCache(appRoot, cacheRoot, { write, patchBrowserClientFil
   if (!patchBrowserClientFiles) return syncResults;
 
   const files = [];
-  for (const pluginName of ["chrome", "browser-use"]) {
+  for (const pluginName of listBundledPluginNames(appRoot)) {
     const pluginRoot = join(cacheRoot, pluginName);
     if (!existsSync(pluginRoot)) continue;
     for (const entry of readdirSync(pluginRoot, { withFileTypes: true })) {

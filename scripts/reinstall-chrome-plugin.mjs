@@ -2,14 +2,15 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 function usage() {
   console.log(`Usage:
   node scripts/reinstall-chrome-plugin.mjs --app PATH [--plugin chrome]
 
-Reinstalls the bundled Chrome plugin through Codex app-server APIs, then
-verifies the Chrome native messaging host manifest. This does not write the
-Chrome registry key directly.`);
+Reinstalls the bundled Chrome plugin through Codex app-server APIs, repairs the
+native host manifest when Codex skips it, then verifies the Chrome native
+messaging host manifest.`);
 }
 
 function parseArgs(argv) {
@@ -90,6 +91,28 @@ function startAppServer(codexExe) {
   return appServer;
 }
 
+async function installNativeHostManifest({ appRoot, pluginName }) {
+  const resourcesRoot = join(appRoot, "app", "resources");
+  const pluginRoot = join(resourcesRoot, "plugins", "openai-bundled", "plugins", pluginName);
+  const installManifest = join(pluginRoot, "scripts", "installManifest.mjs");
+  const runtimePaths = {
+    codexCliPath: join(resourcesRoot, "codex.exe"),
+    nodePath: join(resourcesRoot, "node.exe"),
+    nodeReplPath: join(resourcesRoot, "node_repl.exe"),
+  };
+
+  for (const path of [installManifest, runtimePaths.codexCliPath, runtimePaths.nodePath, runtimePaths.nodeReplPath]) {
+    if (!existsSync(path)) throw new Error(`Missing required path: ${path}`);
+  }
+
+  const module = await import(pathToFileURL(installManifest).href);
+  if (typeof module.install !== "function") {
+    throw new Error(`installManifest.mjs does not export install(): ${installManifest}`);
+  }
+
+  return await module.install({ appServerRuntimePaths: runtimePaths });
+}
+
 async function reinstallPlugin({ appRoot, pluginName }) {
   const codexExe = join(appRoot, "app", "resources", "codex.exe");
   const marketplacePath = join(appRoot, "app", "resources", "plugins", "openai-bundled", ".agents", "plugins", "marketplace.json");
@@ -112,12 +135,14 @@ async function reinstallPlugin({ appRoot, pluginName }) {
     });
     if (uninstall.error) throw new Error(`plugin/uninstall failed: ${uninstall.error.message}`);
 
-    const install = await request(appServer, "install", "plugin/install", {
+    const pluginInstall = await request(appServer, "install", "plugin/install", {
       marketplacePath,
       remoteMarketplaceName: null,
       pluginName,
     }, 120_000);
-    if (install.error) throw new Error(`plugin/install failed: ${install.error.message}`);
+    if (pluginInstall.error) throw new Error(`plugin/install failed: ${pluginInstall.error.message}`);
+
+    const nativeHostInstall = await installNativeHostManifest({ appRoot, pluginName });
 
     const verify = spawnSync(process.execPath, [checkManifest, "--json"], {
       encoding: "utf8",
@@ -129,7 +154,7 @@ async function reinstallPlugin({ appRoot, pluginName }) {
       throw new Error(`native host verification failed: ${verifyText || verify.stderr.trim()}`);
     }
 
-    return { marketplacePath, pluginName, uninstall, install, nativeHost: verifyJson };
+    return { marketplacePath, pluginName, uninstall, install: pluginInstall, nativeHostInstall, nativeHost: verifyJson };
   } finally {
     appServer.process.kill();
   }

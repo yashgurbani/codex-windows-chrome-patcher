@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import asar from "@electron/asar";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -139,6 +139,14 @@ test("Windows launcher keeps Start shortcuts resilient across Codex updates", ()
   assert.match(autoPatch, /\[switch\]\$NoCodexAlias/);
   assert.match(shortcut, /\[string\]\$CodexAliasName = "Codex"/);
   assert.match(shortcut, /foreach \(\$name in \$shortcutNames\)/);
+});
+
+test("Chrome reinstall script repairs native host manifest after plugin install", () => {
+  const reinstall = readFileSync(join(root, "scripts", "reinstall-chrome-plugin.mjs"), "utf8");
+
+  assert.match(reinstall, /installNativeHostManifest/);
+  assert.match(reinstall, /pathToFileURL/);
+  assert.match(reinstall, /appServerRuntimePaths/);
 });
 
 test("local ASAR tool detection supports the installed package bin", (t) => {
@@ -518,4 +526,60 @@ test("user plugin cache browser clients can be patched after app resources", asy
 
   assert.equal(cacheOnlyResult.status, 0, cacheOnlyResult.stderr);
   assert.match(readFileSync(chromeCacheClient, "utf8"), /function HF\(\)\{return!0\}/);
+});
+
+test("user plugin cache sync supports renamed bundled browser plugin layout", async (t) => {
+  const fixtureRoot = join(root, ".test-fixtures", "codex-app-cache-renamed-browser");
+  const appRoot = join(fixtureRoot, "app-root");
+  const cacheRoot = join(fixtureRoot, "cache", "openai-bundled");
+  const resources = join(appRoot, "app", "resources");
+  const pluginRoot = join(resources, "plugins", "openai-bundled", "plugins");
+  const browserClient = [
+    "function HF(){return globalThis.nodeRepl?.requestMeta?.[qF]===$F}",
+    'function WS(t){if(t==="cdp")return;let e=YS();if(!(e==null||e.includes(t)))throw new Error(BO(t))}',
+    'function KS(t){if(t==="cdp")return!0;let e=YS();return e==null||e.includes(t)}',
+  ].join(";");
+
+  rmSync(fixtureRoot, { recursive: true, force: true });
+  mkdirSync(join(pluginRoot, "chrome", "scripts"), { recursive: true });
+  mkdirSync(join(pluginRoot, "chrome", ".codex-plugin"), { recursive: true });
+  mkdirSync(join(pluginRoot, "browser", "scripts"), { recursive: true });
+  mkdirSync(join(pluginRoot, "browser", ".codex-plugin"), { recursive: true });
+  mkdirSync(join(pluginRoot, "computer-use", ".codex-plugin"), { recursive: true });
+  t.after(() => rmSync(fixtureRoot, { recursive: true, force: true }));
+
+  writeFileSync(join(pluginRoot, "chrome", "scripts", "browser-client.mjs"), browserClient);
+  writeFileSync(join(pluginRoot, "chrome", ".codex-plugin", "plugin.json"), '{"name":"chrome","version":"26.527.31326"}');
+  writeFileSync(join(pluginRoot, "browser", "scripts", "browser-client.mjs"), browserClient);
+  writeFileSync(join(pluginRoot, "browser", ".codex-plugin", "plugin.json"), '{"name":"browser","version":"26.527.31326"}');
+  writeFileSync(
+    join(pluginRoot, "computer-use", ".codex-plugin", "plugin.json"),
+    '{"name":"computer-use","version":"26.527.31326"}',
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      script,
+      "--app",
+      appRoot,
+      "--cache-only",
+      "--apply",
+      "--patch-user-plugin-cache",
+      "--patch-browser-client",
+      "--plugin-cache",
+      cacheRoot,
+    ],
+    { cwd: root, encoding: "utf8", env: { ...process.env, CODEX_APP_ROOT: "" } },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stderr, /browser-use/);
+  for (const pluginName of ["chrome", "browser"]) {
+    const text = readFileSync(join(cacheRoot, pluginName, "26.527.31326", "scripts", "browser-client.mjs"), "utf8");
+    assert.match(text, /function HF\(\)\{return!0\}/);
+    assert.match(text, /function WS\(t\)\{return\}/);
+    assert.match(text, /function KS\(t\)\{return!0\}/);
+  }
+  assert.ok(existsSync(join(cacheRoot, "computer-use", "26.527.31326", ".codex-plugin", "plugin.json")));
 });
