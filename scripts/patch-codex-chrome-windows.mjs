@@ -22,7 +22,7 @@ const PACKAGE_SUFFIX = "_x64__2p2nqsd0c76g0";
 const ORIGINAL_ASAR_HEADER_HASH =
   "0914b5a1cd66a81962edb46e3f8ac49bc574144a4460ec55ff46010273eda9fd";
 const FORCED_EXPERIMENTAL_FEATURES =
-  "apps:!0,memories:!0,plugins:!0,browser_use:!0,browser_use_external:!0,computer_use:!0,in_app_browser:!0,remote_control:!0,tool_search:!0,tool_suggest:!0,tool_call_mcp_elicitation:!0";
+  "apps:!0,memories:!0,plugins:!0,browser_use:!0,browser_use_external:!0,computer_use:!0,in_app_browser:!0,tool_search:!0,tool_suggest:!0,tool_call_mcp_elicitation:!0";
 
 function forcedFeatureOverrideFunction(functionName, featureListName) {
   return `function ${functionName}(e){let t={${FORCED_EXPERIMENTAL_FEATURES}};for(let n of ${featureListName}){let r=e[n];r!=null&&(t[n]=t[n]===!0?!0:r)}return t}`;
@@ -171,7 +171,14 @@ function patchExeAsarIntegrity(appRoot, newHash, previousHashes = []) {
     .filter((match) => match.idx >= 0);
 
   if (matches.length === 0) {
-    throw new Error(`No known ASAR header hash found in ${exePath}`);
+    return {
+      exePath,
+      oldHash: null,
+      newHash,
+      alreadyPatched: false,
+      skipped: true,
+      reason: "no known ASAR header hash found",
+    };
   }
   if (matches.length > 1) {
     throw new Error(`Multiple possible ASAR header hashes found in ${exePath}: ${matches.map((match) => match.hash).join(", ")}`);
@@ -342,6 +349,14 @@ function patchMain(root) {
 
   text = replaceOnce(
     text,
+    "{autoInstallOptOutKey:e.rr(e.Zn),forceReload:!0,installWhenMissing:!0,name:e.Zn,isAvailable:({features:e})=>e.inAppBrowserUseAllowed,migrate:qi}",
+    "{autoInstallOptOutKey:e.rr(e.Zn),installWhenMissing:!0,name:e.Zn,isAvailable:()=>!0,migrate:qi}",
+    "main browser-use bundled plugin install policy and availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
     "name:e.On,isAvailable:({buildFlavor:e,features:t})=>Jn(e)&&t.externalBrowserUseAllowed",
     "name:e.On,isAvailable:()=>!0",
     "main chrome bundled plugin install policy and availability",
@@ -382,6 +397,30 @@ function patchMain(root) {
 
   text = replaceOnce(
     text,
+    "{forceReload:!0,name:dt,syncInstallStateWithChromeExtension:!0,isAvailable:({buildFlavor:e,env:t,features:n})=>Bi(e,t)&&n.externalBrowserUseAllowed}",
+    "{installWhenMissing:!0,name:dt,syncInstallStateWithChromeExtension:!0,isAvailable:()=>!0}",
+    "main chrome bundled plugin install policy and availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
+    "{forceReload:!0,name:e.Qn,syncInstallStateWithChromeExtension:!0,isAvailable:({buildFlavor:e,env:t,features:n})=>Vi(e,t)&&n.externalBrowserUseAllowed}",
+    "{installWhenMissing:!0,name:e.Qn,syncInstallStateWithChromeExtension:!0,isAvailable:()=>!0}",
+    "main chrome bundled plugin install policy and availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
+    "{forceReload:!0,name:ut,syncInstallStateWithChromeExtension:!0,isAvailable:({buildFlavor:e,features:t})=>t.externalBrowserUseAllowed&&Hi(e)}",
+    "{installWhenMissing:!0,name:ut,syncInstallStateWithChromeExtension:!0,isAvailable:()=>!0}",
+    "main chrome bundled plugin install policy and availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
     "{installWhenMissing:!0,name:e.kn,isAvailable:({buildFlavor:e,features:n,platform:r})=>t.T.isInternal(e)&&r===`win32`&&n.computerUse}",
     "{installWhenMissing:!0,name:e.kn,isAvailable:({features:e,platform:t})=>t===`win32`&&e.computerUse}",
     "main windows computer-use plugin availability",
@@ -413,6 +452,14 @@ function patchMain(root) {
     changes,
   );
 
+  text = replaceOnce(
+    text,
+    "{name:e.$n,isAvailable:({buildFlavor:e,features:t,platform:n})=>Ui(e)&&n===`win32`&&t.computerUse}",
+    "{installWhenMissing:!0,name:e.$n,isAvailable:({features:e,platform:t})=>t===`win32`&&e.computerUse}",
+    "main windows computer-use plugin availability",
+    changes,
+  );
+
   text = replaceRegexOnce(
     text,
     /let p=t\.inAppBrowserUse\|\|t\.externalBrowserUse,m=t\.computerUse&&t\.computerUseNodeRepl,h=(\w+)\(t\);if\(!p&&!m\)return null;/,
@@ -420,6 +467,15 @@ function patchMain(root) {
     "main browser-use node repl always enabled",
     changes,
     /let p=!0,m=t\.computerUse&&t\.computerUseNodeRepl,h=\w+\(t\);/,
+  );
+
+  text = replaceRegexOnce(
+    text,
+    /let m=n\.inAppBrowserUse\|\|n\.externalBrowserUse,h=n\.computerUse&&n\.computerUseNodeRepl,g=(\w+)\(n\);if\(!m&&!h\)return null;/,
+    "let m=!0,h=n.computerUse&&n.computerUseNodeRepl,g=$1(n);",
+    "main browser-use node repl always enabled",
+    changes,
+    /let m=!0,h=n\.computerUse&&n\.computerUseNodeRepl,g=\w+\(n\);/,
   );
 
   text = replaceRegexOnce(
@@ -566,6 +622,22 @@ function patchRendererBrowserAvailability(root) {
 
   text = replaceOnce(
     text,
+    "let _=g,v=_===`available`,y=_===`loading`&&h.isLoading,b=_===`loading`,x;return",
+    "let _=`available`,v=!0,y=!1,b=!1,x;return",
+    "renderer computer-use statsig and feature availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
+    "function p({enabled:e,isComputerUseFeatureEnabled:t,isComputerUseFeatureLoading:n,isComputerUseGateEnabled:r,isHostCompatiblePlatform:i,isPlatformLoading:a,windowType:o}){return e?o===`electron`?r?a?`loading`:i?n?`loading`:t?`available`:`config-requirement-disabled`:`unsupported-platform`:`statsig-disabled`:`window-type-disabled`:`disabled`}",
+    "function p({enabled:e,isComputerUseFeatureEnabled:t,isComputerUseFeatureLoading:n,isComputerUseGateEnabled:r,isHostCompatiblePlatform:i,isPlatformLoading:a,windowType:o}){return`available`}",
+    "renderer computer-use statsig and feature availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
     "let o=h(a),c=i&&o.enabled&&!o.isLoading,l=r&&c,u;return",
     "let o=h(a),c=!0,l=!0,u;return",
     "renderer external browser statsig and feature availability",
@@ -598,8 +670,40 @@ function patchRendererBrowserAvailability(root) {
 
   text = replaceOnce(
     text,
+    "let c=u(s),d=i===`chrome-extension`||o&&c.enabled&&!c.isLoading,f=i===`chrome-extension`?!1:c.isLoading,p;return",
+    "let c=u(s),d=!0,f=!1,p;return",
+    "renderer external browser statsig and feature availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
     "let u=f(l),p=o(e.runCodexInWsl),m=u.enabled&&!u.isLoading,h=u.isLoading,g=p===!0,v;",
     "let u=f(l),p=o(e.runCodexInWsl),m=!0,h=!1,g=!1,v;",
+    "renderer in-app browser statsig and feature availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
+    "{hostId:o}=t,s=n(c),d=a(`410262010`),f;",
+    "{hostId:o}=t,s=!0,d=!0,f;",
+    "renderer in-app browser statsig and feature availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
+    "let p=u(f),m=r(e.runCodexInWsl),h=p.enabled&&!p.isLoading,_=p.isLoading,v=m===!0,y;",
+    "let p=u(f),m=r(e.runCodexInWsl),h=!0,_=!1,v=!1,y;",
+    "renderer in-app browser statsig and feature availability",
+    changes,
+  );
+
+  text = replaceOnce(
+    text,
+    "function g({isBrowserAgentGateEnabled:e,isBrowserSidebarEnabled:t,isBrowserUseEnabled:n,isLoading:r,runCodexInWsl:i,windowType:a}){return a===`chrome-extension`?`window-type-disabled`:r?`loading`:t?e?n?i?`wsl-disabled`:`available`:`config-requirement-disabled`:`statsig-disabled`:`browser-pane-disabled`}",
+    "function g({isBrowserAgentGateEnabled:e,isBrowserSidebarEnabled:t,isBrowserUseEnabled:n,isLoading:r,runCodexInWsl:i,windowType:a}){return`available`}",
     "renderer in-app browser statsig and feature availability",
     changes,
   );
@@ -671,6 +775,14 @@ function patchRendererPluginFilters(root) {
     changes,
   );
 
+  text = replaceOnce(
+    text,
+    "function W(e,{isComputerUseAvailable:t,isExternalBrowserUseAvailable:n,isInAppBrowserUseAvailable:r}){return!(!r&&G(e)||!n&&K(e)||!t&&q(e))}",
+    "function W(e,{isComputerUseAvailable:t,isExternalBrowserUseAvailable:n,isInAppBrowserUseAvailable:r}){return!0}",
+    "renderer plugin list browser and computer-use availability filter",
+    changes,
+  );
+
   writeFileSync(file, text);
   return changes;
 }
@@ -712,6 +824,14 @@ function patchRendererDefaultFeatureOverrides(root) {
     changes,
   );
 
+  text = replaceOnce(
+    text,
+    "function uI(e,t){let n={};for(let t of oI){let r=e[t];r!=null&&(n[t]=r)}return n[cI]=t,n}",
+    `function uI(e,t){let n={${FORCED_EXPERIMENTAL_FEATURES}};for(let r of oI){let t=e[r];t!=null&&(n[r]=n[r]===!0?!0:t)}return n[cI]=t,n}`,
+    "renderer default experimental feature overrides force supported flags",
+    changes,
+  );
+
   writeFileSync(file, text);
   return changes;
 }
@@ -725,8 +845,10 @@ function patchRendererMemoriesAvailability(root) {
       [
         "function m(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
         "function p(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
+        "function f(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
         "function m(e,t){return!0}",
         "function p(e,t){return!0}",
+        "function f(e,t){return!0}",
       ],
       "renderer experimental features queries bundle",
     );
@@ -749,6 +871,14 @@ function patchRendererMemoriesAvailability(root) {
       changes,
     );
 
+    text = replaceOnce(
+      text,
+      "function f(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
+      "function f(e,t){return!0}",
+      "renderer memories feature availability",
+      changes,
+    );
+
     writeFileSync(file, text);
     results.push(changes);
   }
@@ -763,6 +893,8 @@ function patchRendererMemoriesAvailability(root) {
         "let se=!0,ce=u?.config,le;",
         "let oe=H?.enabled===!0,se=l?.config,ce;",
         "let oe=!0,se=l?.config,ce;",
+        "let de=ue?.enabled===!0,fe=p?.config,pe;",
+        "let de=!0,fe=p?.config,pe;",
       ],
       "renderer personalization settings bundle",
     );
@@ -793,6 +925,14 @@ function patchRendererMemoriesAvailability(root) {
       changes,
     );
 
+    text = replaceOnce(
+      text,
+      "let de=ue?.enabled===!0,fe=p?.config,pe;",
+      "let de=!0,fe=p?.config,pe;",
+      "renderer personalization memories enabled state",
+      changes,
+    );
+
     writeFileSync(file, text);
     results.push(changes);
   }
@@ -813,6 +953,15 @@ function patchRenderer(root) {
 function patchBrowserClient(file, { write }) {
   const changes = { file, changed: [], missing: [] };
   let text = readFileSync(file, "utf8");
+
+  if (
+    text.includes("privileged native pipe bridge is not available; browser-client is not trusted") &&
+    text.includes("globalThis.nodeRepl?.nativePipe") &&
+    !text.includes("function HF(){return globalThis.nodeRepl?.requestMeta")
+  ) {
+    changes.changed.push("browser-client native pipe trust handled by app hash");
+    return changes;
+  }
 
   text = replaceOnce(
     text,
@@ -1012,7 +1161,9 @@ async function main() {
   console.log(`Applied patch. Backup: ${backup}`);
   console.log(`Temporary patched ASAR: ${packed}`);
   if (exePatch != null) {
-    if (exePatch.alreadyPatched) {
+    if (exePatch.skipped) {
+      console.log(`Skipped Electron ASAR integrity patch in ${exePatch.exePath}: ${exePatch.reason}.`);
+    } else if (exePatch.alreadyPatched) {
       console.log(`Electron ASAR integrity already patched in ${exePatch.exePath}: ${exePatch.newHash}`);
     } else {
       console.log(`Patched Electron ASAR integrity in ${exePatch.exePath}: ${exePatch.oldHash} -> ${exePatch.newHash}`);

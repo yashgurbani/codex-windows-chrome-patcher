@@ -18,7 +18,7 @@ import { homedir, tmpdir } from "node:os";
 
 const { createPackage, extractAll } = asar;
 const FORCED_EXPERIMENTAL_FEATURES =
-  "apps:!0,memories:!0,plugins:!0,browser_use:!0,browser_use_external:!0,computer_use:!0,in_app_browser:!0,remote_control:!0,tool_search:!0,tool_suggest:!0,tool_call_mcp_elicitation:!0";
+  "apps:!0,memories:!0,plugins:!0,browser_use:!0,browser_use_external:!0,computer_use:!0,in_app_browser:!0,tool_search:!0,tool_suggest:!0,tool_call_mcp_elicitation:!0";
 
 function forcedFeatureOverrideFunction(functionName, featureListName) {
   return `function ${functionName}(e){let t={${FORCED_EXPERIMENTAL_FEATURES}};for(let n of ${featureListName}){let r=e[n];r!=null&&(t[n]=t[n]===!0?!0:r)}return t}`;
@@ -271,6 +271,36 @@ function findAsset(root, prefix) {
   return join(assetRoot, matches[0]);
 }
 
+function markerMatches(text, marker) {
+  return typeof marker === "string" ? text.includes(marker) : marker.test(text);
+}
+
+function findJsAssetContaining(root, pathParts, markers, label) {
+  const dir = join(root, ...pathParts);
+  const matches = readdirSync(dir)
+    .filter((name) => name.endsWith(".js"))
+    .map((name) => {
+      const file = join(dir, name);
+      const text = readFileSync(file, "utf8");
+      const score = markers.filter((marker) => markerMatches(text, marker)).length;
+      return { file, score };
+    })
+    .filter((match) => match.score > 0)
+    .sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
+
+  if (matches.length === 0) {
+    throw new Error(`Could not find ${label} under ${dir}`);
+  }
+  if (matches.length > 1 && matches[0].score === matches[1].score) {
+    throw new Error(`Could not uniquely identify ${label} under ${dir}: ${matches.map((match) => match.file).join(", ")}`);
+  }
+  return matches[0].file;
+}
+
+function findRendererAssetContaining(root, markers, label) {
+  return findJsAssetContaining(root, ["webview", "assets"], markers, label);
+}
+
 function patchRendererDesktopFeatures(root) {
   const file = join(root, "webview", "assets", "app-main-BssxuQ1L.js");
   const changes = { file, changed: [], missing: [] };
@@ -370,7 +400,18 @@ function patchRendererMemoriesAvailability(root) {
   const results = [];
 
   {
-    const file = findAsset(root, "experimental-features-queries-");
+    const file = findRendererAssetContaining(
+      root,
+      [
+        "function m(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
+        "function p(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
+        "function f(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
+        "function m(e,t){return!0}",
+        "function p(e,t){return!0}",
+        "function f(e,t){return!0}",
+      ],
+      "renderer experimental features queries bundle",
+    );
     const changes = { file, changed: [], missing: [] };
     let text = readFileSync(file, "utf8");
 
@@ -382,12 +423,41 @@ function patchRendererMemoriesAvailability(root) {
       changes,
     );
 
+    text = replaceOnce(
+      text,
+      "function p(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
+      "function p(e,t){return!0}",
+      "renderer memories feature availability",
+      changes,
+    );
+
+    text = replaceOnce(
+      text,
+      "function f(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
+      "function f(e,t){return!0}",
+      "renderer memories feature availability",
+      changes,
+    );
+
     writeFileSync(file, text);
     results.push(changes);
   }
 
   {
-    const file = findAsset(root, "personalization-settings-");
+    const file = findRendererAssetContaining(
+      root,
+      [
+        "let ae=ie?.enabled===!0,oe=c?.config,se;",
+        "let ae=!0,oe=c?.config,se;",
+        "let se=oe?.enabled===!0,ce=u?.config,le;",
+        "let se=!0,ce=u?.config,le;",
+        "let oe=H?.enabled===!0,se=l?.config,ce;",
+        "let oe=!0,se=l?.config,ce;",
+        "let de=ue?.enabled===!0,fe=p?.config,pe;",
+        "let de=!0,fe=p?.config,pe;",
+      ],
+      "renderer personalization settings bundle",
+    );
     const changes = { file, changed: [], missing: [] };
     let text = readFileSync(file, "utf8");
 
@@ -395,6 +465,30 @@ function patchRendererMemoriesAvailability(root) {
       text,
       "let ae=ie?.enabled===!0,oe=c?.config,se;",
       "let ae=!0,oe=c?.config,se;",
+      "renderer personalization memories enabled state",
+      changes,
+    );
+
+    text = replaceOnce(
+      text,
+      "let se=oe?.enabled===!0,ce=u?.config,le;",
+      "let se=!0,ce=u?.config,le;",
+      "renderer personalization memories enabled state",
+      changes,
+    );
+
+    text = replaceOnce(
+      text,
+      "let oe=H?.enabled===!0,se=l?.config,ce;",
+      "let oe=!0,se=l?.config,ce;",
+      "renderer personalization memories enabled state",
+      changes,
+    );
+
+    text = replaceOnce(
+      text,
+      "let de=ue?.enabled===!0,fe=p?.config,pe;",
+      "let de=!0,fe=p?.config,pe;",
       "renderer personalization memories enabled state",
       changes,
     );
@@ -419,6 +513,15 @@ function patchRenderer(root) {
 function patchBrowserClient(file, { write }) {
   const changes = { file, changed: [], missing: [] };
   let text = readFileSync(file, "utf8");
+
+  if (
+    text.includes("privileged native pipe bridge is not available; browser-client is not trusted") &&
+    text.includes("globalThis.nodeRepl?.nativePipe") &&
+    !text.includes("function HF(){return globalThis.nodeRepl?.requestMeta")
+  ) {
+    changes.changed.push("browser-client native pipe trust handled by app hash");
+    return changes;
+  }
 
   text = replaceOnce(
     text,
@@ -523,8 +626,17 @@ function patchUserPluginCache(appRoot, cacheRoot, { write, patchBrowserClientFil
   return [...syncResults, ...files.map((file) => patchBrowserClient(file, { write }))];
 }
 
+function filterUnhandledMissing(result) {
+  const handledLabels = new Set(result.changed.map((label) => label.replace(/ \(already patched\)$/, "")));
+  return result.missing.filter((label) => !handledLabels.has(label));
+}
+
+function normalizeVariantMisses(results) {
+  return results.map((result) => ({ ...result, missing: filterUnhandledMissing(result) }));
+}
+
 function assertAllMarkersFound(results) {
-  const missing = results.flatMap((result) => result.missing.map((label) => `${label} in ${result.file}`));
+  const missing = results.flatMap((result) => filterUnhandledMissing(result).map((label) => `${label} in ${result.file}`));
   if (missing.length > 0) {
     throw new Error(`Patch markers missing:\n${missing.map((item) => `- ${item}`).join("\n")}`);
   }
@@ -533,7 +645,7 @@ function assertAllMarkersFound(results) {
 function patchTree(root) {
   const results = [patchMain(root), ...patchRenderer(root)];
   assertAllMarkersFound(results);
-  return results;
+  return normalizeVariantMisses(results);
 }
 
 function signAppAdHoc(appRoot) {
@@ -561,9 +673,10 @@ async function main() {
       patchBrowserClientFiles: opts.patchBrowserClient,
     });
     assertAllMarkersFound(results);
+    const normalizedResults = normalizeVariantMisses(results);
     console.log(
       JSON.stringify(
-        { mode: opts.apply ? "apply" : "dry-run", cacheOnly: true, pluginCache: opts.pluginCache, results },
+        { mode: opts.apply ? "apply" : "dry-run", cacheOnly: true, pluginCache: opts.pluginCache, results: normalizedResults },
         null,
         2,
       ),

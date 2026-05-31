@@ -5,7 +5,8 @@ param(
   [string]$OutputRoot = "D:\CodexPatched",
   [string]$TargetRoot = "",
   [switch]$ForceRebuild,
-  [switch]$RepairChromePlugin
+  [switch]$RepairChromePlugin,
+  [switch]$NoRepairChromePlugin
 )
 
 $ErrorActionPreference = "Stop"
@@ -135,7 +136,9 @@ $arguments = @(
   "-WindowStyle", "Hidden",
   "-ExecutionPolicy", "Bypass",
   "-File", "`"$autoPatcher`"",
-  "-OutputRoot", "`"$OutputRoot`""
+  "-OutputRoot", "`"$OutputRoot`"",
+  "-PatchBrowserClient",
+  "-SyncPluginCache"
 )
 
 if (-not [string]::IsNullOrWhiteSpace($TargetRoot)) {
@@ -144,7 +147,7 @@ if (-not [string]::IsNullOrWhiteSpace($TargetRoot)) {
 if ($ForceRebuild) {
   $arguments += "-ForceRebuild"
 }
-if ($RepairChromePlugin) {
+if (-not $NoRepairChromePlugin) {
   $arguments += "-RepairChromePlugin"
 }
 

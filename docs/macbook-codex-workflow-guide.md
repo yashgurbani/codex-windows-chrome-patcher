@@ -11,7 +11,7 @@ The current macOS patcher applies the same regional-gate transforms as the Windo
 - Forces Chrome / external browser availability.
 - Forces in-app browser and computer-use availability.
 - Forces the renderer plugin list to keep Chrome/browser-use visible.
-- Forces supported experimental feature flags such as apps, plugins, memories, remote control, tool search, and related gates.
+- Forces supported experimental feature flags such as apps, plugins, memories, tool search, and related gates.
 - Forces Memories UI availability and config support.
 - Patches bundled and user-cache browser clients with `--patch-browser-client` by default.
 - Syncs bundled browser plugins into `~/.codex/plugins/cache/openai-bundled` by default.
@@ -234,13 +234,11 @@ browser_use = true
 browser_use_external = true
 computer_use = true
 in_app_browser = true
-remote_control = true
 tool_search = true
 tool_suggest = true
 tool_call_mcp_elicitation = true
 multi_agent = true
 goals = true
-remote_connections = true
 workspace_dependencies = false
 js_repl = false
 
@@ -347,9 +345,9 @@ Enable the patched Codex app under:
 
 Restart patched Codex after granting permissions.
 
-## Remote Control
+## Remote Connections
 
-The local config enables `remote_control = true`, but remote access can still need account/workspace support and mobile pairing.
+Codex now has native remote connections support. This patcher does not start a custom remote-control daemon or force remote-control config keys.
 
 Checklist:
 
@@ -361,7 +359,7 @@ caffeinate -dimsu
 ```
 
 3. Pair from ChatGPT mobile if the Codex UI shows a remote connection QR or pairing flow.
-4. If remote control is absent, confirm the patched app is actually running from `~/CodexPatched`.
+4. If remote connections are absent, confirm the patched app is actually running from `~/CodexPatched`.
 
 Stop `caffeinate` with `Ctrl-C`.
 

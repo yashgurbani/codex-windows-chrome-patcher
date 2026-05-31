@@ -103,7 +103,6 @@ test("PowerShell entrypoints parse cleanly", () => {
     join(root, "scripts", "configure-codex-memories.ps1"),
     join(root, "scripts", "configure-paseo-codex-provider.ps1"),
     join(root, "scripts", "resolve-patched-codex-cli.ps1"),
-    join(root, "scripts", "start-codex-remote-control.ps1"),
   ]) {
     const command = [
       "$errors = $null;",
@@ -116,12 +115,19 @@ test("PowerShell entrypoints parse cleanly", () => {
   }
 });
 
-test("remote-control node helper parses cleanly", () => {
-  const result = spawnSync(process.execPath, ["--check", join(root, "scripts", "codex-remote-control-enable.mjs")], {
-    cwd: root,
-    encoding: "utf8",
-  });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+test("Windows launcher uses native remote connections and full Chrome repair defaults", () => {
+  const autoPatch = readFileSync(join(root, "scripts", "auto-patch-codex.ps1"), "utf8");
+  const launcher = readFileSync(join(root, "scripts", "launch-patched-codex.ps1"), "utf8");
+  const shortcut = readFileSync(join(root, "scripts", "create-patched-codex-shortcut.ps1"), "utf8");
+
+  assert.match(autoPatch, /\$patchRevision = 7/);
+  assert.match(shortcut, /"-PatchBrowserClient"/);
+  assert.match(shortcut, /"-SyncPluginCache"/);
+  assert.match(shortcut, /"-RepairChromePlugin"/);
+  assert.match(launcher, /--patch-user-plugin-cache/);
+  assert.match(launcher, /--patch-browser-client/);
+  assert.doesNotMatch(autoPatch, /RemoteControlPort|NoRemoteControl|start-codex-remote-control/);
+  assert.doesNotMatch(launcher, /RemoteControlPort|NoRemoteControl|start-codex-remote-control|codex-remote-control-enable/);
 });
 
 test("local ASAR tool detection supports the installed package bin", (t) => {
@@ -230,7 +236,7 @@ test("chrome bundled plugin is installed when missing after patch", async (t) =>
   );
   assert.match(
     patchedDesktopFeatures,
-    /function mN\(e\)\{let t=\{apps:!0,memories:!0,plugins:!0,browser_use:!0,browser_use_external:!0,computer_use:!0,in_app_browser:!0,remote_control:!0,tool_search:!0,tool_suggest:!0,tool_call_mcp_elicitation:!0\};for\(let n of fN\)\{let r=e\[n\];r!=null&&\(t\[n\]=t\[n\]===!0\?!0:r\)\}return t\}/,
+    /function mN\(e\)\{let t=\{apps:!0,memories:!0,plugins:!0,browser_use:!0,browser_use_external:!0,computer_use:!0,in_app_browser:!0,tool_search:!0,tool_suggest:!0,tool_call_mcp_elicitation:!0\};for\(let n of fN\)\{let r=e\[n\];r!=null&&\(t\[n\]=t\[n\]===!0\?!0:r\)\}return t\}/,
   );
   const patchedAvailability = readFileSync(
     join(workRoot, "webview", "assets", "use-is-plugins-enabled-aU0WrVOp.js"),
@@ -254,6 +260,48 @@ test("chrome bundled plugin is installed when missing after patch", async (t) =>
     "utf8",
   );
   assert.match(patchedPersonalization, /let oe=!0,se=l\?\.config,ce;/);
+});
+
+test("renderer memories patch handles Codex 26.527 marker names", async (t) => {
+  const fixtureRoot = join(root, ".test-fixtures", "codex-app-current-memories");
+  const appRoot = join(fixtureRoot, "app-root");
+  const sourceRoot = join(fixtureRoot, "asar-source");
+  const workRoot = join(fixtureRoot, "work");
+  const resources = join(appRoot, "app", "resources");
+  rmSync(fixtureRoot, { recursive: true, force: true });
+  mkdirSync(join(sourceRoot, ".vite", "build"), { recursive: true });
+  mkdirSync(join(sourceRoot, "webview", "assets"), { recursive: true });
+  mkdirSync(resources, { recursive: true });
+  t.after(() => rmSync(fixtureRoot, { recursive: true, force: true }));
+
+  writeAsarPatchFixtures(sourceRoot);
+  rmSync(join(sourceRoot, "webview", "assets", "experimental-features-queries-CTmahqSy.js"));
+  rmSync(join(sourceRoot, "webview", "assets", "personalization-settings-DIKmjat4.js"));
+  writeFileSync(
+    join(sourceRoot, "webview", "assets", "experimental-features-queries-CVjYsT-k.js"),
+    "list-experimental-features;batch-write-config-value;memories;function f(e,t){return t||e.some(e=>e.name===`memories`&&e.enabled)}",
+  );
+  writeFileSync(
+    join(sourceRoot, "webview", "assets", "personalization-settings-DR8kNyTH.js"),
+    "settings.personalization.memory.title;settings.memory.enableMemoriesLabel;generateMemories;useMemories;let de=ue?.enabled===!0,fe=p?.config,pe;",
+  );
+  await createPackage(sourceRoot, join(resources, "app.asar"));
+
+  const result = spawnSync(
+    process.execPath,
+    [script, "--app", appRoot, "--work", workRoot, "--dry-run"],
+    { cwd: root, encoding: "utf8", env: { ...process.env, CODEX_APP_ROOT: "" } },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    readFileSync(join(workRoot, "webview", "assets", "experimental-features-queries-CVjYsT-k.js"), "utf8"),
+    /function f\(e,t\)\{return!0\}/,
+  );
+  assert.match(
+    readFileSync(join(workRoot, "webview", "assets", "personalization-settings-DR8kNyTH.js"), "utf8"),
+    /let de=!0,fe=p\?\.config,pe;/,
+  );
 });
 
 test("exe ASAR integrity updates from the currently embedded app.asar hash", async (t) => {
@@ -287,6 +335,33 @@ test("exe ASAR integrity updates from the currently embedded app.asar hash", asy
   assert.match(exeText, new RegExp(newHash));
   assert.doesNotMatch(exeText, new RegExp(previousHash));
   assert.match(result.stdout, /Patched Electron ASAR integrity/);
+});
+
+test("exe ASAR integrity patch skips builds without embedded ASAR header hash", async (t) => {
+  const fixtureRoot = join(root, ".test-fixtures", "codex-app-integrity-skip");
+  const appRoot = join(fixtureRoot, "app-root");
+  const sourceRoot = join(fixtureRoot, "asar-source");
+  const workRoot = join(fixtureRoot, "work");
+  const resources = join(appRoot, "app", "resources");
+  const exePath = join(appRoot, "app", "Codex.exe");
+  rmSync(fixtureRoot, { recursive: true, force: true });
+  mkdirSync(join(sourceRoot, ".vite", "build"), { recursive: true });
+  mkdirSync(join(sourceRoot, "webview", "assets"), { recursive: true });
+  mkdirSync(resources, { recursive: true });
+  t.after(() => rmSync(fixtureRoot, { recursive: true, force: true }));
+
+  writeAsarPatchFixtures(sourceRoot);
+  await createPackage(sourceRoot, join(resources, "app.asar"));
+  writeFileSync(exePath, "fake exe bytes without an embedded asar header hash");
+
+  const result = spawnSync(
+    process.execPath,
+    [script, "--app", appRoot, "--work", workRoot, "--apply", "--patch-exe-integrity"],
+    { cwd: root, encoding: "utf8", env: { ...process.env, CODEX_APP_ROOT: "" } },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Skipped Electron ASAR integrity patch/);
 });
 
 test("bundled browser clients ignore region backend and url gates", async (t) => {

@@ -7,13 +7,14 @@ param(
   [switch]$NoShortcut,
   [switch]$NoConfig,
   [switch]$NoPaseo,
-  [switch]$NoRemoteControl,
-  [int]$RemoteControlPort = 14567,
   [string]$ShortcutName = "Codex Patched",
   [string]$ShortcutLocations = "StartMenu",
   [switch]$SyncPluginCache,
   [switch]$RepairChromePlugin,
-  [switch]$PatchBrowserClient
+  [switch]$PatchBrowserClient,
+  [switch]$NoSyncPluginCache,
+  [switch]$NoRepairChromePlugin,
+  [switch]$NoPatchBrowserClient
 )
 
 $ErrorActionPreference = "Stop"
@@ -275,7 +276,10 @@ function Set-DynamicPatchedCodexShortcut {
     "-WindowStyle", "Hidden",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$AutoPatcher`"",
-    "-OutputRoot", "`"$OutputRoot`""
+    "-OutputRoot", "`"$OutputRoot`"",
+    "-PatchBrowserClient",
+    "-SyncPluginCache",
+    "-RepairChromePlugin"
   )
   if (-not [string]::IsNullOrWhiteSpace($TargetRoot)) {
     $arguments += @("-TargetRoot", "`"$TargetRoot`"")
@@ -305,7 +309,10 @@ function Set-DynamicPatchedCodexShortcut {
 $node = Find-Node
 $source = Find-LatestCodexPackage
 $version = Get-CodexPackageVersion $source
-$patchRevision = 6
+$patchRevision = 7
+$shouldPatchBrowserClient = -not $NoPatchBrowserClient
+$shouldSyncPluginCache = -not $NoSyncPluginCache
+$shouldRepairChromePlugin = -not $NoRepairChromePlugin
 $targetRootWasExplicit = -not [string]::IsNullOrWhiteSpace($TargetRoot)
 
 if ([string]::IsNullOrWhiteSpace($TargetRoot)) {
@@ -358,7 +365,7 @@ if (Test-Path -LiteralPath $patchMarker) {
 $needsPatch = $ForceRebuild -or $needsCopy -or -not (Test-Path -LiteralPath $patchMarker) -or $markerRevision -ne $patchRevision
 if ($needsPatch) {
   $patchArgs = @($patcher, "--app", $TargetRoot, "--apply", "--patch-exe-integrity")
-  if ($PatchBrowserClient) {
+  if ($shouldPatchBrowserClient) {
     $patchArgs += "--patch-browser-client"
   }
 
@@ -373,7 +380,7 @@ if ($needsPatch) {
     target = $TargetRoot
     patchRevision = $patchRevision
     patchedAt = (Get-Date).ToString("o")
-    patchBrowserClient = [bool]$PatchBrowserClient
+    patchBrowserClient = [bool]$shouldPatchBrowserClient
   }
   $marker | ConvertTo-Json | Set-Content -LiteralPath $patchMarker -Encoding UTF8
 } else {
@@ -420,17 +427,14 @@ if (-not $NoLaunch) {
   if ($NoCleanup) {
     $launchArgs += "-NoCleanup"
   }
-  if ($SyncPluginCache) {
+  if ($shouldSyncPluginCache) {
     $launchArgs += "-SyncPluginCache"
   }
-  if ($RepairChromePlugin) {
+  if ($shouldRepairChromePlugin) {
     $launchArgs += "-RepairChromePlugin"
   }
-  if ($NoRemoteControl) {
-    $launchArgs += "-NoRemoteControl"
-  }
-  if ($RemoteControlPort -ne 14567) {
-    $launchArgs += @("-RemoteControlPort", $RemoteControlPort)
+  if ($shouldPatchBrowserClient) {
+    $launchArgs += "-PatchBrowserClient"
   }
   powershell @launchArgs
 } elseif (-not $NoCleanup) {

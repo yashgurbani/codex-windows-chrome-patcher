@@ -28,13 +28,11 @@ browser_use = true
 browser_use_external = true
 computer_use = true
 in_app_browser = true
-remote_control = true
 tool_search = true
 tool_suggest = true
 tool_call_mcp_elicitation = true
 multi_agent = true
 goals = true
-remote_connections = true
 workspace_dependencies = false
 js_repl = false
 """
@@ -87,4 +85,4 @@ path.write_text(text)
 print(f"Configured Codex live search, features, and memories in: {path}")
 PY
 
-grep -nE '^web_search|^\[features\]|browser_use|computer_use|in_app_browser|remote_control|tool_search|tool_suggest|tool_call_mcp_elicitation|^\[memories\]|generate_memories|use_memories|disable_on_external_context' "$config_path"
+grep -nE '^web_search|^\[features\]|browser_use|computer_use|in_app_browser|tool_search|tool_suggest|tool_call_mcp_elicitation|^\[memories\]|generate_memories|use_memories|disable_on_external_context' "$config_path"

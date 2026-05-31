@@ -245,13 +245,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\auto-patch-codex.ps1 `
 - `-NoLaunch`: patch only.
 - `-NoShortcut`: do not create or update the dynamic Start Menu shortcut.
 - `-NoPaseo`: do not update Paseo's Codex provider override.
-- `-NoRemoteControl`: launch Codex without starting the localhost remote-control app-server.
-- `-RemoteControlPort`: localhost port for the remote-control app-server; default is `14567`.
 - `-ShortcutName`: name for the generated `.lnk`; default is `Codex Patched`.
 - `-ShortcutLocations`: `StartMenu`, `Desktop`, `Both`, `None`, or comma-separated values; default is `StartMenu`.
-- `-RepairChromePlugin`: ask Codex to reinstall the bundled Chrome plugin during launch.
-- `-SyncPluginCache`: advanced cache sync. Only use this after closing Codex and Chrome, because Windows can lock plugin files.
-- `-PatchBrowserClient`: patches bundled/user-cache browser client trust and backend checks. Use this for the full Chrome regional-gate bypass on macOS or when Chrome is still hidden after the app-asar patch. Skip it only when you intentionally want the minimal app-asar-only patch.
+- `-RepairChromePlugin`: ask Codex to reinstall the bundled Chrome plugin during launch. Enabled by default; use `-NoRepairChromePlugin` to skip.
+- `-SyncPluginCache`: sync the bundled Chrome/browser-use plugins into the user cache. Enabled by default; use `-NoSyncPluginCache` to skip.
+- `-PatchBrowserClient`: patches bundled/user-cache browser client trust and backend checks. Enabled by default; use `-NoPatchBrowserClient` only when intentionally testing the minimal app-asar-only patch.
 
 ### Memories
 
@@ -270,13 +268,11 @@ browser_use = true
 browser_use_external = true
 computer_use = true
 in_app_browser = true
-remote_control = true
 tool_search = true
 tool_suggest = true
 tool_call_mcp_elicitation = true
 multi_agent = true
 goals = true
-remote_connections = true
 workspace_dependencies = false
 js_repl = false
 
@@ -292,32 +288,9 @@ To add or refresh that block in your user config with a timestamped backup:
 powershell -ExecutionPolicy Bypass -File .\scripts\configure-codex-memories.ps1
 ```
 
-### Windows Remote Control
+### Windows Remote Connections
 
-Windows builds can fail with the normal `codex remote-control start` daemon path. The included workaround starts a localhost app-server and sends the internal remote-control enable RPC.
-
-Normal `Codex Patched` launches start this remote-control app-server automatically after the desktop app is launched. Use `-NoRemoteControl` only when debugging startup.
-
-Create or refresh the Start Menu shortcut:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-codex-remote-control.ps1 -CreateShortcut
-```
-
-Start remote control:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-codex-remote-control.ps1
-```
-
-Check status or stop it:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-codex-remote-control.ps1 -Status
-powershell -ExecutionPolicy Bypass -File .\scripts\start-codex-remote-control.ps1 -Stop
-```
-
-The helper uses the newest patched Codex copy under `D:\CodexPatched` by default, listens only on `ws://127.0.0.1:14567`, and writes logs under `%USERPROFILE%\.codex\remote-control`.
+Codex now has native Windows remote connections support. This repo no longer starts a custom localhost remote-control app-server or forces remote-control config keys. Use the native Codex remote connection UI after launching the patched app.
 
 ### Paseo
 
@@ -502,6 +475,4 @@ Expected result:
 - `scripts/patch-paseo-codex-import.mjs`: patches Paseo's Codex import discovery to avoid full-history hydration during the import list step.
 - `scripts/codex-patched-cli.cmd`: stable command wrapper for tools like Paseo.
 - `scripts/resolve-patched-codex-cli.ps1`: resolves the newest patched Codex CLI.
-- `scripts/start-codex-remote-control.ps1`: starts, checks, stops, and shortcuts the Windows app-server remote-control workaround.
-- `scripts/codex-remote-control-enable.mjs`: sends the remote-control WebSocket RPC sequence to the localhost app-server.
 - `launcher/CodexPatchedLauncher.cs`: source for the no-console launcher exe.

@@ -3,8 +3,7 @@ param(
   [string]$OutputRoot = "D:\CodexPatched",
   [switch]$SyncPluginCache,
   [switch]$RepairChromePlugin,
-  [int]$RemoteControlPort = 14567,
-  [switch]$NoRemoteControl,
+  [switch]$PatchBrowserClient,
   [switch]$NoCleanup,
   [switch]$NoStop,
   [switch]$NoLaunch
@@ -164,7 +163,11 @@ if (-not $NoStop) {
 $patcher = Join-Path $PSScriptRoot "patch-codex-chrome-windows.mjs"
 $node = Get-Command node -ErrorAction SilentlyContinue
 if ($SyncPluginCache -and $node -and (Test-Path -LiteralPath $patcher)) {
-  & $node.Source $patcher --app $resolvedAppRoot --cache-only --apply --patch-user-plugin-cache
+  $cachePatchArgs = @($patcher, "--app", $resolvedAppRoot, "--cache-only", "--apply", "--patch-user-plugin-cache")
+  if ($PatchBrowserClient) {
+    $cachePatchArgs += "--patch-browser-client"
+  }
+  & $node.Source @cachePatchArgs
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to patch Codex browser plugin cache."
   }
@@ -194,16 +197,4 @@ if ($NoLaunch) {
 } else {
   Start-Process -FilePath $codexExe
   Write-Host "Launched patched Codex: $codexExe"
-
-  if (-not $NoRemoteControl) {
-    $remoteControlLauncher = Join-Path $PSScriptRoot "start-codex-remote-control.ps1"
-    if (Test-Path -LiteralPath $remoteControlLauncher) {
-      & powershell -NoProfile -ExecutionPolicy Bypass -File $remoteControlLauncher -AppRoot $resolvedAppRoot -OutputRoot $OutputRoot -Port $RemoteControlPort
-      if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Patched Codex launched, but remote control did not connect. Run scripts\start-codex-remote-control.ps1 -Status for details."
-      }
-    } else {
-      Write-Warning "Skipping remote control because helper is missing: $remoteControlLauncher"
-    }
-  }
 }

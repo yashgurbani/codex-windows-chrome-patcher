@@ -25,13 +25,11 @@ browser_use = true
 browser_use_external = true
 computer_use = true
 in_app_browser = true
-remote_control = true
 tool_search = true
 tool_suggest = true
 tool_call_mcp_elicitation = true
 multi_agent = true
 goals = true
-remote_connections = true
 workspace_dependencies = false
 js_repl = false
 "@
