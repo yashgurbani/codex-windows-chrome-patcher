@@ -137,27 +137,38 @@ $knownCodexRoots = @(
 )
 
 if (-not $NoStop) {
-  Get-CimInstance Win32_Process |
+  $codexProcesses = @(
+    Get-CimInstance Win32_Process |
     Where-Object {
       $processPath = $_.ExecutablePath
-      $_.Name -in @("Codex.exe", "codex.exe", "node_repl.exe") -and
+      $_.Name -in @("Codex.exe", "codex.exe", "node_repl.exe", "extension-host.exe") -and
       $processPath -and
       ($knownCodexRoots | Where-Object { $processPath -like $_ })
-    } |
-    ForEach-Object {
-      Stop-Process -Id $_.ProcessId -Force
     }
+  )
+
+  foreach ($process in $codexProcesses) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+  foreach ($process in $codexProcesses) {
+    Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+  }
 
   $bundledPluginCache = Join-Path $env:USERPROFILE ".codex\plugins\cache\openai-bundled"
-  Get-CimInstance Win32_Process |
+  $cacheExtensionHosts = @(
+    Get-CimInstance Win32_Process |
     Where-Object {
       $_.Name -ieq "extension-host.exe" -and
       $_.ExecutablePath -and
       $_.ExecutablePath -like "$bundledPluginCache*"
-    } |
-    ForEach-Object {
-      Stop-Process -Id $_.ProcessId -Force
     }
+  )
+  foreach ($process in $cacheExtensionHosts) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+  foreach ($process in $cacheExtensionHosts) {
+    Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+  }
 }
 
 $patcher = Join-Path $PSScriptRoot "patch-codex-chrome-windows.mjs"

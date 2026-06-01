@@ -128,6 +128,8 @@ test("Windows launcher uses native remote connections and full Chrome repair def
   assert.match(shortcut, /"-RepairChromePlugin"/);
   assert.match(launcher, /--patch-user-plugin-cache/);
   assert.match(launcher, /--patch-browser-client/);
+  assert.match(launcher, /"extension-host\.exe"/);
+  assert.match(launcher, /Wait-Process -Id \$process\.ProcessId -Timeout 10/);
   assert.doesNotMatch(autoPatch, /RemoteControlPort|NoRemoteControl|start-codex-remote-control/);
   assert.doesNotMatch(launcher, /RemoteControlPort|NoRemoteControl|start-codex-remote-control|codex-remote-control-enable/);
 });
