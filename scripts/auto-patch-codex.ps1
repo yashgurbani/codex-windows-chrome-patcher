@@ -6,6 +6,7 @@ param(
   [switch]$NoCleanup,
   [switch]$NoShortcut,
   [switch]$NoConfig,
+  [switch]$Paseo,
   [switch]$NoPaseo,
   [string]$ShortcutName = "Codex Patched",
   [string]$ShortcutLocations = "StartMenu",
@@ -341,6 +342,7 @@ $patchRevision = 7
 $shouldPatchBrowserClient = -not $NoPatchBrowserClient
 $shouldSyncPluginCache = -not $NoSyncPluginCache
 $shouldRepairChromePlugin = -not $NoRepairChromePlugin
+$shouldConfigurePaseo = $Paseo -and -not $NoPaseo
 $targetRootWasExplicit = -not [string]::IsNullOrWhiteSpace($TargetRoot)
 
 if ([string]::IsNullOrWhiteSpace($TargetRoot)) {
@@ -368,7 +370,24 @@ Write-Host "Latest Codex package: $source"
 Write-Host "Patched target: $TargetRoot"
 
 $patchMarker = Join-Path $TargetRoot ".codex-chrome-patcher.json"
-$needsCopy = -not (Test-Path -LiteralPath (Join-Path $TargetRoot "app\resources\app.asar"))
+$targetHasAsar = Test-Path -LiteralPath (Join-Path $TargetRoot "app\resources\app.asar")
+$markerRevision = $null
+$markerIsReadable = $false
+if (Test-Path -LiteralPath $patchMarker) {
+  try {
+    $markerRevision = (Get-Content -LiteralPath $patchMarker -Raw | ConvertFrom-Json).patchRevision
+    $markerIsReadable = $null -ne $markerRevision
+  } catch {
+    $markerIsReadable = $false
+  }
+}
+
+if ($targetHasAsar -and -not $markerIsReadable) {
+  Write-Warning "Existing patched target is missing a valid patch marker. Forcing a clean rebuild: $TargetRoot"
+  $ForceRebuild = $true
+}
+
+$needsCopy = -not $targetHasAsar
 if ($ForceRebuild -or $needsCopy) {
   Stop-CodexFromTarget $TargetRoot
   if (Test-Path -LiteralPath $TargetRoot) {
@@ -379,15 +398,6 @@ if ($ForceRebuild -or $needsCopy) {
   Write-Host "Copied Codex package to patched target."
 } else {
   Write-Host "Using existing patched target. Pass -ForceRebuild to rebuild it from the newest Store package."
-}
-
-$markerRevision = $null
-if (Test-Path -LiteralPath $patchMarker) {
-  try {
-    $markerRevision = (Get-Content -LiteralPath $patchMarker -Raw | ConvertFrom-Json).patchRevision
-  } catch {
-    $markerRevision = $null
-  }
 }
 
 $needsPatch = $ForceRebuild -or $needsCopy -or -not (Test-Path -LiteralPath $patchMarker) -or $markerRevision -ne $patchRevision
@@ -421,7 +431,7 @@ if (-not $NoConfig) {
     throw "Failed to configure Codex feature flags."
   }
 
-  if (-not $NoPaseo) {
+  if ($shouldConfigurePaseo) {
     if (Test-Path -LiteralPath $paseoConfigurator) {
       powershell -NoProfile -ExecutionPolicy Bypass -File $paseoConfigurator
       if ($LASTEXITCODE -ne 0) {
@@ -439,6 +449,8 @@ if (-not $NoConfig) {
     } else {
       Write-Warning "Skipping Paseo import patch because helper is missing: $paseoImportPatcher"
     }
+  } else {
+    Write-Host "Skipping optional Paseo config. Pass -Paseo to enable it."
   }
 }
 

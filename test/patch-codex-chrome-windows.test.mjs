@@ -121,6 +121,8 @@ test("Windows launcher uses native remote connections and full Chrome repair def
   const shortcut = readFileSync(join(root, "scripts", "create-patched-codex-shortcut.ps1"), "utf8");
 
   assert.match(autoPatch, /\$patchRevision = 7/);
+  assert.match(autoPatch, /\$shouldConfigurePaseo = \$Paseo -and -not \$NoPaseo/);
+  assert.match(autoPatch, /Forcing a clean rebuild/);
   assert.match(shortcut, /"-PatchBrowserClient"/);
   assert.match(shortcut, /"-SyncPluginCache"/);
   assert.match(shortcut, /"-RepairChromePlugin"/);
